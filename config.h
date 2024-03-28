@@ -32,7 +32,7 @@
 #define MAX_LEADER_ENERGY 150
 
 // Time for a round in seconds
-#define ROUND_TIME 20 // 3 minutes
+#define ROUND_TIME 30 // 3 minutes
 
 // Maximum number of rounds a team can lose before the game ends
 #define MAX_LOST_ROUNDS 3
@@ -72,9 +72,12 @@ void reset_players_status(struct Player *player);      // reset the status of th
 void end_round();                                      // end the round
 void child_handler_usr1(int signum);                   // handler for the SIGUSR1 signal
 void quit_handler(int signum);                         // handler for the SIGQUIT signal
-void set_player(struct Player *player);                // set the player in the players array
-struct Player get_player(int id);                      // get the player from the players array
-void usr1_handler(int signum);                         // handler for the SIGUSR1 signal
-void set_player_signals();                             // set the signals for the player process
+// void set_player(struct Player *player);                                 // set the player in the players array
+// struct Player get_player(int id);                                       // get the player from the players array
+void usr1_handler(int signum);                                  // handler for the SIGUSR1 signal
+void set_player_signals();                                      // set the signals for the player process
+void write_player_to_pipe(int write_fd, struct Player *player); // write the player to the pipe
+void read_player_from_pipe(int read_fd, struct Player *player); // read the player from the pipe
+void update_players(int read_fd, struct Player *players);       // update the players' energy levels
 
 #endif // CONFIG_H

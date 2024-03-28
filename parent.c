@@ -17,13 +17,13 @@ void initialize()
 
 pid_t players_pids[2 * (NUM_PLAYERS + 1)]; // 5 players + 1 leader for each team = 12
 struct Player players[2 * (NUM_PLAYERS + 1)];
+int pipe_fd[2];
 
 int main(int argc, char *argv[])
 {
     // Initialize the global variables
     initialize();
 
-    int pipe_fd[2];
     if (pipe(pipe_fd) == -1)
     {
         perror("pipe");
@@ -55,14 +55,9 @@ int main(int argc, char *argv[])
             // parent process
             initialize_player(&players[i], i);
             // write the player to the pipe
-            if (write(pipe_fd[1], &players[i], sizeof(struct Player)) == -1)
-            {
-                perror("writing player to pipe: ");
-                exit(1);
-            }
+            write_player_to_pipe(pipe_fd[1], &players[i]);
             // save the pid of the player and set the player in the players array
             players_pids[i] = pid;
-            set_player(&players[i]);
         }
     }
 
@@ -108,17 +103,57 @@ void kill_all_childs()
 
 void start_round()
 {
+    if (current_round != 0)
+    {
+        for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+        {
+            reset_players_status(&players[i]);
+        }
+    }
     // start the round
     printf("Round %d has started\n", current_round);
     // wake up all the players using usr1 signal
     for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
     {
+        // printf("Sending SIGUSR1 to player %d\n", players_pids[i]);
         sleep(1);
         kill(players_pids[i], SIGUSR1);
     }
+
+    printf("Waiting for round to finish\n");
     sleep(ROUND_TIME);
+
+    printf("Reading updated player structs from pipe\n");
+    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    {
+        printf("Reading player %d\n", i);
+        read_player_from_pipe(pipe_fd[0], &players[i]);
+    }
+
+    printf("Finished reading player structs from pipe\n");
+
+    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    {
+        printf("Printing players after round %d\n", current_round);
+        print_player(players[i]);
+    }
+}
+
+void end_round()
+{
     printf("Round %d has ended\n", current_round);
     current_round++;
+    // print players status after the round ends
+    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    {
+        print_player(players[i]);
+    }
+
+    // send stop signals to all the players
+    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    {
+        kill(players_pids[i], SIGSTOP);
+    }
 }
 
 void usr1_handler(int signum)

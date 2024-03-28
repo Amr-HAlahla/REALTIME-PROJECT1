@@ -14,23 +14,24 @@ int main(int argc, char *argv[])
     int read_fd = atoi(argv[1]);
     int write_fd = atoi(argv[2]);
 
-    close(write_fd); // close the write end of the pipe
-
     struct Player player;
     // read the player from the pipe
-    if (read(read_fd, &player, sizeof(player)) == -1)
-    {
-        perror("read player from pipe: ");
-        exit(1);
-    }
+    read_player_from_pipe(read_fd, &player);
 
     set_player_signals();
 
     while (1)
     {
-        printf("Player %d is waiting for the signal to start\n", player.id);
+        printf("Player %d is waiting for a signal\n", player.id);
         pause();
+        // update energy of the player by (energy - THROW_ENERGY_COST)
+        // printf("Update energy of player %d\n", player.id);
+        player.energy -= THROW_ENERGY_COST;
+        player.has_ball = 1;
+        write_player_to_pipe(write_fd, &player);
     }
+
+    // print_player(player);
 
     return 0;
 }

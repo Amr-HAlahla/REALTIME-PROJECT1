@@ -64,3 +64,32 @@ void set_player_signals()
         exit(1);
     }
 }
+
+void write_player_to_pipe(int write_fd, struct Player *player)
+{
+    if (write(write_fd, player, sizeof(struct Player)) == -1)
+    {
+        perror("writing player to pipe: ");
+        exit(1);
+    }
+}
+
+void read_player_from_pipe(int pipe_fd, struct Player *player)
+{
+    if (read(pipe_fd, player, sizeof(struct Player)) == -1)
+    {
+        perror("reading player from pipe: ");
+        exit(1);
+    }
+}
+
+// update players will be used by the parent process to read the status of the players, needed when round ends
+void update_players(int read_fd, struct Player *players)
+{
+    struct Player player;
+    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    {
+        read_player_from_pipe(read_fd, &player);
+        // players[i] = player;
+    }
+}
