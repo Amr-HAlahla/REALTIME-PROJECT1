@@ -6,30 +6,29 @@ int current_time;
 int num_of_lost_rounds_teamA;
 int num_of_lost_rounds_teamB;
 
-pid_t players_pids[2 * (NUM_PLAYERS + 1)];    // 5 players + 1 leader for each team = 12
-struct Player players[2 * (NUM_PLAYERS + 1)]; // 5 players + 1 leader for each team = 12
+void initialize()
+{
+    num_of_balls = 0;
+    current_round = 0;
+    current_time = 0;
+    num_of_lost_rounds_teamA = 0;
+    num_of_lost_rounds_teamB = 0;
+}
+
+pid_t players_pids[2 * (NUM_PLAYERS + 1)]; // 5 players + 1 leader for each team = 12
+struct Player players[2 * (NUM_PLAYERS + 1)];
 
 int main(int argc, char *argv[])
 {
-
-    // initialize array of players
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
-    {
-        players[i].id = -1;
-        players[i].energy = -1;
-        players[i].has_ball = -1;
-        players[i].team_name = ' ';
-    }
     // Initialize the global variables
     initialize();
 
-    // // Pipes for communication with player processes
-    // int pipe_teamA[NUM_PLAYERS][2];
-    // int pipe_teamB[NUM_PLAYERS][2];
-
-    // // Array to store player process IDs
-    // pid_t player_pids_teamA[NUM_PLAYERS];
-    // pid_t player_pids_teamB[NUM_PLAYERS];
+    int pipe_fd[2];
+    if (pipe(pipe_fd) == -1)
+    {
+        perror("pipe");
+        exit(1);
+    }
 
     for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
     {
@@ -43,46 +42,39 @@ int main(int argc, char *argv[])
 
         if (pid == 0)
         {
-            // prepare the arguments for the player process (id, energy, has_ball, pipe to read and write, team)
-            char id[5];
-            sprintf(id, "%d", i);
-            char energy[2];
-            // type of the player (leader if i == 5 or 11) => 0 normal player, 1 leader
-            int type = (i == 5 || i == 11) ? 1 : 0;
-            sprintf(energy, "%d", generate_energy(type));
-            // has_ball => initially no player has the ball
-            char has_ball[2];
-            sprintf(has_ball, "%d", 0);
-            // team => either A or B
-            char team[2];
-            sprintf(team, "%c", (i < 6) ? 'A' : 'B');
-
-            players[i].id = i;
-            players[i].energy = atoi(energy);
-            players[i].has_ball = atoi(has_ball);
-            players[i].team_name = team[0];
-
-            // execute the player process
-            // printf("Player %d from team %c has %d energy and %s the ball\n", i, team[0], atoi(energy), atoi(has_ball) ? "has" : "does not have");
-            printf("going to execute player process with id %d\n", i);
-            execl("./player", "player", id, energy, has_ball, team, NULL);
+            char read_fd[10];
+            char write_fd[10];
+            sprintf(read_fd, "%d", pipe_fd[0]);
+            sprintf(write_fd, "%d", pipe_fd[1]);
+            execl("./player", "player", read_fd, write_fd, NULL);
             perror("execl");
             exit(1);
         }
         else
         {
+            // parent process
+            initialize_player(&players[i], i);
+            // write the player to the pipe
+            if (write(pipe_fd[1], &players[i], sizeof(struct Player)) == -1)
+            {
+                perror("writing player to pipe: ");
+                exit(1);
+            }
+            // save the pid of the player and set the player in the players array
             players_pids[i] = pid;
+            set_player(&players[i]);
         }
     }
 
-    struct sigaction act;
-    act.sa_handler = quit_handler;
-    act.sa_flags = SA_RESTART;
-    sigemptyset(&act.sa_mask);
-
-    if (sigaction(SIGQUIT, &act, NULL) == -1)
+    if (sigset(SIGUSR1, usr1_handler) == -1)
     {
-        perror("sigaction");
+        perror("sigset");
+        exit(1);
+    }
+
+    if (sigset(SIGQUIT, quit_handler) == -1)
+    {
+        perror("sigset");
         exit(1);
     }
 
@@ -92,33 +84,9 @@ int main(int argc, char *argv[])
         wait(NULL);
     }
 
-    // sleep(10); // wait for 10 seconds untill all the players are created
-    // // kill all the child processes
-    // kill_all_childs();
-
     printf("Parent process is done\n");
 
     return 0;
-}
-
-void initialize()
-{
-    num_of_balls = 0;
-    current_round = 0;
-    current_time = 0;
-    num_of_lost_rounds_teamA = 0;
-    num_of_lost_rounds_teamB = 0;
-
-    // seed the random number generator
-    // srand(time(NULL));
-
-    // // create the public FIFO, first remove it if it already exists
-    // unlink(PUBLIC);
-    // if (mkfifo(PUBLIC, 0666) == -1)
-    // {
-    //     perror("mkfifo");
-    //     exit(1);
-    // }
 }
 
 void quit_handler(int signum)
@@ -130,26 +98,31 @@ void quit_handler(int signum)
     exit(0);
 }
 
-int generate_energy(int type)
-{
-    int energy;
-    srand(time(NULL));
-    // type 0 => normal player, type 1 => leader (diff in defined energy ranges)
-    if (type == 0)
-    {
-        energy = (rand() % (MAX_PLAYER_ENERGY - MIN_PLAYER_ENERGY + 1)) + MIN_PLAYER_ENERGY;
-    }
-    else
-    {
-        energy = (rand() % (MAX_LEADER_ENERGY - MIN_LEADER_ENERGY + 1)) + MIN_LEADER_ENERGY;
-    }
-    return energy;
-}
-
 void kill_all_childs()
 {
     for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
     {
         kill(players_pids[i], SIGQUIT);
     }
+}
+
+void start_round()
+{
+    // start the round
+    printf("Round %d has started\n", current_round);
+    // wake up all the players using usr1 signal
+    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    {
+        sleep(1);
+        kill(players_pids[i], SIGUSR1);
+    }
+    sleep(ROUND_TIME);
+    printf("Round %d has ended\n", current_round);
+    current_round++;
+}
+
+void usr1_handler(int signum)
+{
+    printf("Parent received the signal to start the round\n");
+    start_round();
 }

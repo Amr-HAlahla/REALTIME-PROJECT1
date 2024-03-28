@@ -32,7 +32,7 @@
 #define MAX_LEADER_ENERGY 150
 
 // Time for a round in seconds
-#define ROUND_TIME 180 // 3 minutes
+#define ROUND_TIME 20 // 3 minutes
 
 // Maximum number of rounds a team can lose before the game ends
 #define MAX_LOST_ROUNDS 3
@@ -61,15 +61,20 @@ struct Player
 // };
 
 // define all the functions that are used in the parent and player processes
-void initialize();                                                                          // initialize the game
-int generate_energy(int type);                                                              // generate the initial energy level for a player
-void initialize_player(struct Player *player, int id, int energy, int has_ball, char team); // initialize a player
-void print_player(struct Player player);                                                    // print the player's information
-void kill_all_childs();                                                                     // kill all the child processes
-void player_quit_handler(int signum);                                                       // handler for the SIGCHLD signal
-void quit_handler(int signum);                                                              // handler for the SIGQUIT signal
-void start_round();
-void reset_players_status();
-void end_round();
+void initialize();                                     // initialize the game
+int generate_energy(int type);                         // generate the initial energy level for a player
+void initialize_player(struct Player *player, int id); // initialize a player
+void print_player(struct Player player);               // print the player's information
+void kill_all_childs();                                // kill all the child processes
+void player_quit_handler(int signum);                  // handler for the SIGCHLD signal
+void start_round();                                    // start the round
+void reset_players_status(struct Player *player);      // reset the status of the players
+void end_round();                                      // end the round
+void child_handler_usr1(int signum);                   // handler for the SIGUSR1 signal
+void quit_handler(int signum);                         // handler for the SIGQUIT signal
+void set_player(struct Player *player);                // set the player in the players array
+struct Player get_player(int id);                      // get the player from the players array
+void usr1_handler(int signum);                         // handler for the SIGUSR1 signal
+void set_player_signals();                             // set the signals for the player process
 
 #endif // CONFIG_H
