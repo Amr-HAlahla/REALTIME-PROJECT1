@@ -6,6 +6,25 @@ int current_time;
 int num_of_lost_rounds_teamA;
 int num_of_lost_rounds_teamB;
 
+// create a public fifo
+void create_public_fifo()
+{
+    if (access(PUBLIC, F_OK) == 0)
+    {
+        if (unlink(PUBLIC) == -1)
+        {
+            perror("Error");
+            exit(-1);
+        }
+    }
+
+    if (mkfifo(PUBLIC, 0666) == -1)
+    {
+        perror("Error");
+        exit(-1);
+    }
+}
+
 void initialize()
 {
     num_of_balls = 0;
@@ -23,6 +42,15 @@ int main(int argc, char *argv[])
 {
     // Initialize the global variables
     initialize();
+    create_public_fifo();
+
+    // try open public fifo for reading and writing
+    int public_fifo_fd = open(PUBLIC, O_RDWR);
+    if (public_fifo_fd == -1)
+    {
+        perror("open");
+        exit(1);
+    }
 
     if (pipe(pipe_fd) == -1)
     {
@@ -73,11 +101,33 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // wait for all the player processes to finish
+    sleep(2);
+    // write the players to the public fifo in order to make functions file store them
     for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
     {
-        wait(NULL);
+        write(public_fifo_fd, &players[i], sizeof(struct Player));
+        printf("Writing player %d to the public fifo\n", i);
     }
+
+    read_players_from_fifo(public_fifo_fd);
+    // also write the pids, each one alone
+    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    {
+        write(public_fifo_fd, &players_pids[i], sizeof(pid_t));
+        printf("Writing pid %d of the player %d to the public fifo\n", players_pids[i], i);
+    }
+
+    read_pids_from_fifo(public_fifo_fd);
+
+    while (1)
+    {
+        pause();
+    }
+    // wait for all the player processes to finish
+    // for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    // {
+    //     wait(NULL);
+    // }
 
     printf("Parent process is done\n");
 

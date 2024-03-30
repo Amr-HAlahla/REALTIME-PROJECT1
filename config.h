@@ -79,5 +79,9 @@ void set_player_signals();                                      // set the signa
 void write_player_to_pipe(int write_fd, struct Player *player); // write the player to the pipe
 void read_player_from_pipe(int read_fd, struct Player *player); // read the player from the pipe
 void update_players(int read_fd, struct Player *players);       // update the players' energy levels
+void read_players_from_fifo();
+void write_players_to_fifo(int public_fifo_fd);
+void read_pids_from_fifo();
+void write_pids_to_fifo(int public_fifo_fd);
 
 #endif // CONFIG_H

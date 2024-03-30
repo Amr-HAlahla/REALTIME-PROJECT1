@@ -1,6 +1,10 @@
 // this file contains the functions that are called by the child process
 #include "config.h"
 
+// create pids and players arrays to store them after read from public fifo
+pid_t players_pids2[2 * (NUM_PLAYERS + 1)];
+struct Player players2[2 * (NUM_PLAYERS + 1)];
+
 // initialize the player
 void initialize_player(struct Player *player, int id)
 {
@@ -8,6 +12,38 @@ void initialize_player(struct Player *player, int id)
     player->energy = generate_energy(player->id % 6 == 5 ? 1 : 0);
     player->has_ball = 0;
     player->team_name = (id < 6) ? 'A' : 'B';
+}
+
+void read_players_from_fifo()
+{
+    int public_fifo_fd = open(PUBLIC, O_RDONLY);
+    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    {
+        if (read(public_fifo_fd, &players2[i], sizeof(struct Player)) == -1)
+        {
+            perror("reading players from public fifo: ");
+            exit(1);
+        }
+    }
+
+    printf("Players read from public fifo\n");
+    close(public_fifo_fd);
+}
+
+void read_pids_from_fifo()
+{
+    int public_fifo_fd = open(PUBLIC, O_RDONLY);
+    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    {
+        if (read(public_fifo_fd, &players_pids2[i], sizeof(pid_t)) == -1)
+        {
+            perror("reading pids from public fifo: ");
+            exit(1);
+        }
+    }
+
+    printf("Pids read from public fifo\n");
+    close(public_fifo_fd);
 }
 
 void print_player(struct Player player)
