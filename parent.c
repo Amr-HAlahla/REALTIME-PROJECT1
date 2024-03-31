@@ -1,67 +1,42 @@
 #include "config.h"
 
-int num_of_balls;
-int current_round;
-int current_time;
-int num_of_lost_rounds_teamA;
-int num_of_lost_rounds_teamB;
+typedef void (*sighandler_t)(int);
 
-// create a public fifo
-void create_public_fifo()
-{
-    if (access(PUBLIC, F_OK) == 0)
-    {
-        if (unlink(PUBLIC) == -1)
-        {
-            perror("Error");
-            exit(-1);
-        }
-    }
+sighandler_t sigset(int sig, sighandler_t disp);
 
-    if (mkfifo(PUBLIC, 0666) == -1)
-    {
-        perror("Error");
-        exit(-1);
-    }
-}
+int num_of_balls = 0;
+int current_round = 0;
+int num_of_lost_rounds_teamA = 0;
+int num_of_lost_rounds_teamB = 0;
 
-void initialize()
-{
-    num_of_balls = 0;
-    current_round = 0;
-    current_time = 0;
-    num_of_lost_rounds_teamA = 0;
-    num_of_lost_rounds_teamB = 0;
-}
+void create_public_fifo();
+void initialize_player(int id, pid_t next_player_pid, pid_t team_leader_pid);
+void parent_signals_handler(int signum);
+void print_player(struct Player player);
+int generate_energy(int type);
+void parent_set_signals();
 
-pid_t players_pids[2 * (NUM_PLAYERS + 1)]; // 5 players + 1 leader for each team = 12
-struct Player players[2 * (NUM_PLAYERS + 1)];
-int pipe_fd[2];
+pid_t players_pids[2 * NUM_PLAYERS];
+struct Player players[2 * NUM_PLAYERS]; // 6 players each team. 12 players in total
+
+// int pipe_fd[2 * NUM_PLAYERS][2];
+
+// int public_fifo_fd;
+pid_t pid;
+pid_t next_player_pid;
+pid_t team_leader_pid;
+
+int running = 1;
 
 int main(int argc, char *argv[])
 {
-    // Initialize the global variables
-    initialize();
     create_public_fifo();
 
-    // try open public fifo for reading and writing
-    int public_fifo_fd = open(PUBLIC, O_RDWR);
-    if (public_fifo_fd == -1)
-    {
-        perror("open");
-        exit(1);
-    }
-
-    if (pipe(pipe_fd) == -1)
-    {
-        perror("pipe");
-        exit(1);
-    }
-
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    int i = 2 * NUM_PLAYERS - 1; // 11
+    for (; i > -1; i--)
     {
         sleep(1); // to make sure that the players are created in order
-        pid_t pid = fork();
+        pid = fork();
         if (pid == -1)
         {
             perror("fork");
@@ -70,144 +45,209 @@ int main(int argc, char *argv[])
 
         if (pid == 0)
         {
-            char read_fd[10];
-            char write_fd[10];
-            sprintf(read_fd, "%d", pipe_fd[0]);
-            sprintf(write_fd, "%d", pipe_fd[1]);
-            execl("./player", "player", read_fd, write_fd, NULL);
+            execl("./player", "player", NULL);
             perror("execl");
             exit(1);
         }
         else
         {
-            // parent process
-            initialize_player(&players[i], i);
-            // write the player to the pipe
-            write_player_to_pipe(pipe_fd[1], &players[i]);
-            // save the pid of the player and set the player in the players array
+            // sleep(2);
             players_pids[i] = pid;
+
+            if (i == 11)
+            {
+                next_player_pid = -1; // supposed to be the pid of player with index 6 (team B first player)
+                team_leader_pid = -1; // supposed to be the pid of player with index 5 (team A leader)
+            }
+            else if (i == 5)
+            {
+                next_player_pid = -1;               // should be player with id 0 (team A first player)
+                team_leader_pid = players_pids[11]; // point to the leader of other team (team B leader)
+            }
+            else
+            {
+                next_player_pid = players_pids[i + 1]; // previous created player
+                team_leader_pid = -1;
+            }
+            initialize_player(i, next_player_pid, team_leader_pid);
         }
     }
 
-    if (sigset(SIGUSR1, usr1_handler) == -1)
-    {
-        perror("sigset");
-        exit(1);
-    }
-
-    if (sigset(SIGQUIT, quit_handler) == -1)
-    {
-        perror("sigset");
-        exit(1);
-    }
-
-    sleep(2);
-    // write the players to the public fifo in order to make functions file store them
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
-    {
-        write(public_fifo_fd, &players[i], sizeof(struct Player));
-        printf("Writing player %d to the public fifo\n", i);
-    }
-
-    read_players_from_fifo(public_fifo_fd);
-    // also write the pids, each one alone
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
-    {
-        write(public_fifo_fd, &players_pids[i], sizeof(pid_t));
-        printf("Writing pid %d of the player %d to the public fifo\n", players_pids[i], i);
-    }
-
-    read_pids_from_fifo(public_fifo_fd);
-
-    while (1)
-    {
-        pause();
-    }
-    // wait for all the player processes to finish
-    // for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    // printf("Print players before update their info!\n");
+    // for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     // {
-    //     wait(NULL);
+    //     print_player(players[i]);
     // }
+    // print players pids after creating them
+    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+    {
+        printf("Player %d pid: %d\n", i, players_pids[i]);
+    }
+    // set next player and team leader for each player
+    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+    {
+        if (i == 11) // team B leader
+        {
+            players[i].next_player_pid = players_pids[6]; // first player in team B
+            players[i].team_leader_pid = players_pids[5]; // team A leader
+        }
+        else if (i == 5) // team A leader
+        {
+            players[i].next_player_pid = players_pids[0];  // first player in team A
+            players[i].team_leader_pid = players_pids[11]; // team B leader
+        }
+        else
+        {
+            players[i].next_player_pid = players_pids[i + 1]; // next player
+            players[i].team_leader_pid = -1;                  // no team leader
+        }
+    }
 
+    parent_set_signals();
+
+    printf("Print players after update their info!\n");
+    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+    {
+        print_player(players[i]);
+    }
+    printf("====================================\n");
+    printf("Sending signals to the players to receive their info from the public fifo\n");
+    // fflush(stdout);
+    // sleep(1);
+    // send signals to the players to receive their info from the public fifo
+    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+    {
+        sleep(1); // to avoid race condition between players on reading from the public fifo
+        kill(players_pids[i], SIGUSR1);
+    }
+
+    int public_fifo_fd = open(PUBLIC, O_WRONLY);
+    if (public_fifo_fd == -1)
+    {
+        perror("open");
+        exit(1);
+    }
+    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+    {
+        if (write(public_fifo_fd, &players[i], sizeof(struct Player)) == -1)
+        {
+            perror("writing to public fifo");
+            exit(1);
+        }
+        sleep(1);
+        printf("Writing player %d to public fifo\n", i);
+    }
+    close(public_fifo_fd);
+    printf("Players written to public fifo\n");
+    // wait for the players to finish reading from the public fifo
+    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+    {
+        wait(NULL);
+    }
+    sleep(1);
+    int index = 0;
+    while (running)
+    {
+        if (!index)
+        {
+            printf("Parent process is waiting for a signal\n");
+        }
+        index++;
+    }
     printf("Parent process is done\n");
 
     return 0;
 }
 
-void quit_handler(int signum)
+// handler for the parent process signals
+void parent_signals_handler(int signum)
 {
-    printf("Parent is going to kill players!\n");
-    kill_all_childs();
-    sleep(2);
-    printf("Parent is going to exit!\n");
-    exit(0);
-}
-
-void kill_all_childs()
-{
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    if (signum == SIGUSR1)
     {
-        kill(players_pids[i], SIGQUIT);
-    }
-}
-
-void start_round()
-{
-    if (current_round != 0)
-    {
-        for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+        printf("Parent received the signal to start the round\n");
+        printf("=============================\n");
+        // send usr2 signal to all players to start the round
+        for (int i = 0; i < 2 * NUM_PLAYERS; i++)
         {
-            reset_players_status(&players[i]);
+            printf("Waking up player %d with pid %d\n", i, players_pids[i]);
+            kill(players_pids[i], SIGUSR2);
         }
+        // start_round();
     }
-    // start the round
-    printf("Round %d has started\n", current_round);
-    // wake up all the players using usr1 signal
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    else if (signum == SIGQUIT)
     {
-        // printf("Sending SIGUSR1 to player %d\n", players_pids[i]);
-        sleep(1);
-        kill(players_pids[i], SIGUSR1);
+        printf("Parent received the signal to end the game\n");
+        // kill all childs
+        for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+        {
+            printf("Killing player %d with pid %d\n", i, players_pids[i]);
+            kill(players_pids[i], SIGTERM);
+        }
+        exit(0);
     }
+}
+/*
 
-    printf("Waiting for round to finish\n");
-    sleep(ROUND_TIME);
+*/
 
-    printf("Reading updated player structs from pipe\n");
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+// create a public fifo
+void create_public_fifo()
+{
+    remove(PUBLIC);
+
+    if (mkfifo(PUBLIC, 0666) == -1)
     {
-        printf("Reading player %d\n", i);
-        read_player_from_pipe(pipe_fd[0], &players[i]);
-    }
-
-    printf("Finished reading player structs from pipe\n");
-
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
-    {
-        printf("Printing players after round %d\n", current_round);
-        print_player(players[i]);
+        perror("Error");
+        exit(-1);
     }
 }
 
-void end_round()
+int generate_energy(int id)
 {
-    printf("Round %d has ended\n", current_round);
-    current_round++;
-    // print players status after the round ends
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    srand(time(NULL));
+    int range;
+    // it its id is 5 or 11 then it is a team leader, else its normal player
+    if (id == 5 || id == 11)
     {
-        print_player(players[i]);
+        range = MAX_LEADER_ENERGY - MIN_LEADER_ENERGY + 1;
+        return rand() % range;
+    }
+    else
+    {
+        range = MAX_PLAYER_ENERGY - MIN_PLAYER_ENERGY + 1;
+        return rand() % range;
+    }
+}
+// initialize the player
+void initialize_player(int id, pid_t next_player_pid, pid_t team_leader_pid)
+{
+    struct Player player;
+    player.id = id;
+    player.energy = generate_energy(id);
+    player.has_ball = 0;
+    player.team_name = id < 6 ? 'A' : 'B';
+    player.next_player_pid = next_player_pid;
+    player.team_leader_pid = team_leader_pid;
+    players[id] = player;
+}
+
+void parent_set_signals()
+{
+    if (sigset(SIGUSR1, parent_signals_handler) == -1)
+    {
+        perror("sigset");
+        exit(1);
     }
 
-    // send stop signals to all the players
-    for (int i = 0; i < 2 * (NUM_PLAYERS + 1); i++)
+    if (sigset(SIGQUIT, parent_signals_handler) == -1)
     {
-        kill(players_pids[i], SIGSTOP);
+        perror("sigset");
+        exit(1);
     }
 }
 
-void usr1_handler(int signum)
+void print_player(struct Player player)
 {
-    printf("Parent received the signal to start the round\n");
-    start_round();
+    printf("Player %d from team %c has %d energy and %s the ball and next player is %d and team leader is %d\n",
+           player.id, player.team_name, player.energy, player.has_ball ? "has" : "does not have", player.next_player_pid, player.team_leader_pid);
 }

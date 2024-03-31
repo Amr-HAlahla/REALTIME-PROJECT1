@@ -21,7 +21,7 @@
 #define B_SIZ (PIPE_BUF / 2)
 
 // Number of players in each team
-#define NUM_PLAYERS 5
+#define NUM_PLAYERS 6
 
 // Minimum and maximum initial energy levels for players
 #define MIN_PLAYER_ENERGY 50
@@ -52,36 +52,10 @@ struct Player
     int energy;
     int has_ball;
     char team_name;
+    pid_t next_player_pid;
+    pid_t team_leader_pid;
+    // int pipe_fd[2];
+    // int pipe_forwards[2];
+    // int pipe_backwards[2];
 };
-
-// struct message
-// {
-//     char fifo_name[B_SIZ];
-//     char message[B_SIZ];
-// };
-
-// define all the functions that are used in the parent and player processes
-void initialize();                                     // initialize the game
-int generate_energy(int type);                         // generate the initial energy level for a player
-void initialize_player(struct Player *player, int id); // initialize a player
-void print_player(struct Player player);               // print the player's information
-void kill_all_childs();                                // kill all the child processes
-void player_quit_handler(int signum);                  // handler for the SIGCHLD signal
-void start_round();                                    // start the round
-void reset_players_status(struct Player *player);      // reset the status of the players
-void end_round();                                      // end the round
-void child_handler_usr1(int signum);                   // handler for the SIGUSR1 signal
-void quit_handler(int signum);                         // handler for the SIGQUIT signal
-// void set_player(struct Player *player);                                 // set the player in the players array
-// struct Player get_player(int id);                                       // get the player from the players array
-void usr1_handler(int signum);                                  // handler for the SIGUSR1 signal
-void set_player_signals();                                      // set the signals for the player process
-void write_player_to_pipe(int write_fd, struct Player *player); // write the player to the pipe
-void read_player_from_pipe(int read_fd, struct Player *player); // read the player from the pipe
-void update_players(int read_fd, struct Player *players);       // update the players' energy levels
-void read_players_from_fifo();
-void write_players_to_fifo(int public_fifo_fd);
-void read_pids_from_fifo();
-void write_pids_to_fifo(int public_fifo_fd);
-
 #endif // CONFIG_H
