@@ -20,6 +20,7 @@ void parent_set_signals();
 
 pid_t players_pids[2 * NUM_PLAYERS];
 struct Player players[2 * NUM_PLAYERS]; // 6 players each team. 12 players in total
+pid_t parent_pgid;
 
 // int public_fifo_fd;
 pid_t pid;
@@ -31,6 +32,12 @@ int running = 1;
 int main(int argc, char *argv[])
 {
 
+    if (argc != 1)
+    {
+        fprintf(stderr, "Usage: %s No arguments needed\n", argv[0]);
+        exit(1);
+    }
+    pid_t parent_pgid = getpgrp();
     int i = 2 * NUM_PLAYERS - 1; // 11
     for (; i > -1; i--)
     {
@@ -44,6 +51,11 @@ int main(int argc, char *argv[])
 
         if (pid == 0)
         {
+            if (setpgid(0, parent_pgid) == -1)
+            {
+                perror("setpgid");
+                exit(1);
+            }
             execl("./player", "player", NULL);
             perror("execl");
             exit(1);
@@ -52,7 +64,6 @@ int main(int argc, char *argv[])
         {
             // sleep(2);
             players_pids[i] = pid;
-
             if (i == 11)
             {
                 next_player_pid = -1; // supposed to be the pid of player with index 6 (team B first player)
@@ -99,7 +110,7 @@ int main(int argc, char *argv[])
         }
     }
     printf("====================================\n");
-    printf("Sending signals to the players to receive their info from the public fifo\n");
+    printf("Sending signals to the players to receive their info from the private fifo\n");
     printf("====================================\n");
     fflush(stdout);
     // sen signal for each player and then write the player on its private fifo!
@@ -161,12 +172,20 @@ void parent_signals_handler(int signum)
         printf("Round %d has ended\n", current_round);
         printf("====================================\n");
         // send signals to the players to stop
+        printf("Sending signals to the players to stop\n");
+        // for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+        // {
+        //     kill(players_pids[i], SIGTSTP); // STOP TSTP
+        // }
+        kill(-parent_pgid, SIGTSTP);
+        fflush(stdout);
+        sleep(1);
+        // now send signals to the players to write their info to the private fifos
+        printf("Sending signals to the players to write their info to the private fifos\n");
         for (int i = 0; i < 2 * NUM_PLAYERS; i++)
         {
-            printf("Stopping player %d with pid %d\n", i, players_pids[i]);
-            kill(players_pids[i], SIGTSTP);
+            kill(players_pids[i], SIGQUIT);
         }
-        sleep(1);
         // at the end of the round, read the players info from the private fifos
         for (int i = 0; i < 2 * NUM_PLAYERS; i++)
         {
@@ -183,7 +202,7 @@ void parent_signals_handler(int signum)
                 perror("Error reading from private fifo");
                 exit(1);
             }
-            printf("Reading player of id %d and pid %d to private fifo %s\n", players[i].id, players_pids[i], fifo_name);
+            // printf("Reading player of id %d and pid %d to private fifo %s\n", players[i].id, players_pids[i], fifo_name);
             close(read_fd);
             // print current player info
             print_player(players[i]);
@@ -209,19 +228,20 @@ void parent_signals_handler(int signum)
             }
         }
 
+        // check who won the round and update the lost rounds for each team.
         if (num_of_balls_teamA > num_of_balls_teamB)
         {
             num_of_lost_rounds_teamA++;
-            printf("Team B Won round %d\n", current_round);
+            printf("Team A has %d balls and Team B has %d balls, Team B Won round %d\n", num_of_balls_teamA, num_of_balls_teamB, current_round);
         }
         else if (num_of_balls_teamA < num_of_balls_teamB)
         {
             num_of_lost_rounds_teamB++;
-            printf("Team A Won round %d\n", current_round);
+            printf("Team A has %d balls and Team B has %d balls, Team A Won round %d\n", num_of_balls_teamA, num_of_balls_teamB, current_round);
         }
         else
         {
-            printf("Round %d is a draw\n", current_round);
+            printf("Team A has %d balls and Team B has %d balls, Round %d is a draw\n", num_of_balls_teamA, num_of_balls_teamB, current_round);
         }
         current_round++;
     }
@@ -234,7 +254,17 @@ void parent_signals_handler(int signum)
             printf("Killing player %d with pid %d\n", i, players_pids[i]);
             kill(players_pids[i], SIGTERM);
         }
+        printf("Parent process is done\n");
         exit(0);
+    }
+    else if (signum == SIGTSTP)
+    {
+        // donothing
+        printf("Parent process can't be stopped\n");
+    }
+    else
+    {
+        printf("Parent received an unexpected signal\n");
     }
 }
 
@@ -314,11 +344,21 @@ void parent_set_signals()
 
     struct sigaction sa2;
     sa2.sa_handler = parent_signals_handler;
-    sa2.sa_flags = SA_RESTART;
-    sigemptyset(&sa2.sa_mask);
+    sa2.sa_flags = SA_RESTART; // restart the system call if it is interrupted
+    sigemptyset(&sa2.sa_mask); // clear the signal set
     if (sigaction(SIGQUIT, &sa2, NULL) == -1)
     {
         perror("Error setting signal handler for SIGQUIT");
+        exit(1);
+    }
+
+    struct sigaction sa3;
+    sa3.sa_handler = parent_signals_handler;
+    sa3.sa_flags = SA_RESTART;
+    sigemptyset(&sa3.sa_mask);
+    if (sigaction(SIGTSTP, &sa3, NULL) == -1)
+    {
+        perror("Error setting signal handler for SIGTSTP");
         exit(1);
     }
 }

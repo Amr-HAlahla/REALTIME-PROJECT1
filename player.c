@@ -29,8 +29,8 @@ void set_player_signals()
 
     struct sigaction sa;
     sa.sa_handler = player_signals_handler;
-    sa.sa_flags = SA_RESTART;
-    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART; // restart the system call if at all possible
+    sigemptyset(&sa.sa_mask); // initialize the signal set
     if (sigaction(SIGUSR1, &sa, NULL) == -1)
     {
         perror("Error setting signal handler for SIGUSR1");
@@ -64,6 +64,16 @@ void set_player_signals()
     if (sigaction(SIGTSTP, &sa4, NULL) == -1)
     {
         perror("Error setting signal handler for SIGTSTP");
+        exit(1);
+    }
+
+    struct sigaction sa5;
+    sa5.sa_handler = player_signals_handler;
+    sa5.sa_flags = SA_RESTART;
+    sigemptyset(&sa5.sa_mask);
+    if (sigaction(SIGQUIT, &sa5, NULL) == -1)
+    {
+        perror("Error setting signal handler for SIGQUIT");
         exit(1);
     }
 }
@@ -122,8 +132,8 @@ void player_signals_handler(int signum)
             else
             {
                 kill(current_player.next_player_pid, SIGUSR2);
+                printf("Player %d has thrown the ball to player %d\n", current_player.id, current_player.next_player_pid);
             }
-            printf("Player %d has thrown the ball to player %d\n", current_player.id, current_player.next_player_pid);
         }
         else
         {
@@ -133,7 +143,7 @@ void player_signals_handler(int signum)
     else if (signum == SIGINT)
     {
         // this the leader, and he should throw the ball the leader of the other team
-        printf("Leader Player %d has received the signal to play, he received the ball\n", current_player.id);
+        printf("Leader Player %d has received the ball\n", current_player.id);
         if (current_player.id != 5 && current_player.id != 11)
         {
             printf("Player %d is not the leader of the team\n", current_player.id);
@@ -171,7 +181,20 @@ void player_signals_handler(int signum)
     // handle stop signal (will be sent from the parent when the round ends)
     else if (signum == SIGTSTP)
     {
+        // stop the player
+        printf("Player %d has been stopped\n", current_player.id);
+        fflush(stdout);
+        // if (current_player.id == 11)
+        // {
+        //     // wake up the parent process
+        //     kill(getppid(), SIGCONT);
+        // }
+    }
+
+    else if (signum == SIGQUIT)
+    {
         // write the player info on the private fifo
+        printf("Player %d is writing its info to the private fifo\n", current_player.id);
         char private_fifo[20];
         sprintf(private_fifo, "/tmp/fifo%d", getpid());
         int write_fd = open(private_fifo, O_WRONLY);
@@ -185,7 +208,7 @@ void player_signals_handler(int signum)
             perror("Error writing to private fifo");
             exit(1);
         }
-        printf("Writing player of id %d and pid %d to private fifo %s\n", current_player.id, getpid(), private_fifo);
+        // printf("Writing player of id %d and pid %d to private fifo %s\n", current_player.id, getpid(), private_fifo);
         close(write_fd);
     }
 }
