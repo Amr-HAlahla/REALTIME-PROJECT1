@@ -171,6 +171,21 @@ void player_signals_handler(int signum)
                 // send signal to the leader of other team to receive the ball
                 kill(current_player.team_leader_pid, SIGUSR2);
                 printf("Player %d has thrown the ball to the leader of the other team\n", current_player.id);
+                // after leader throws the ball, ask parent for a new ball.
+                kill(getppid(), SIGUSR2);
+                // write the team name to the public fifo
+                int write_fd = open(PUBLIC, O_WRONLY);
+                if (write_fd == -1)
+                {
+                    perror("Error opening public fifo for writing");
+                    exit(1);
+                }
+                if (write(write_fd, &current_player.team_name, sizeof(char)) == -1)
+                {
+                    perror("Error writing to public fifo");
+                    exit(1);
+                }
+                close(write_fd);
             }
             else
             {
@@ -184,11 +199,6 @@ void player_signals_handler(int signum)
         // stop the player
         printf("Player %d has been stopped\n", current_player.id);
         fflush(stdout);
-        // if (current_player.id == 11)
-        // {
-        //     // wake up the parent process
-        //     kill(getppid(), SIGCONT);
-        // }
     }
 
     else if (signum == SIGQUIT)
@@ -215,8 +225,7 @@ void player_signals_handler(int signum)
 
 void print_player_info()
 {
-    printf("Player %d with pid %d from team %c has %d energy and %s the ball and next player is %d and team leader is %d\n",
-           current_player.id, getpid(), current_player.team_name, current_player.energy,
-           current_player.has_ball ? "has" : "does not have",
-           current_player.next_player_pid, current_player.team_leader_pid);
+
+    printf("Player %d from team %c has %d energy and next player is %d and team leader is %d and has %d balls\n",
+           current_player.id, current_player.team_name, current_player.energy, current_player.next_player_pid, current_player.team_leader_pid, current_player.has_ball);
 }
