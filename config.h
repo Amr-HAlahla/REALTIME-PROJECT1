@@ -16,6 +16,8 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <errno.h>
+#include <asm-generic/signal-defs.h>
+#include <bits/sigaction.h>
 
 #define PUBLIC "/tmp/PUBLIC" // Public FIFO for communication between teams and parent
 #define B_SIZ (PIPE_BUF / 2)
@@ -54,8 +56,5 @@ struct Player
     char team_name;
     pid_t next_player_pid;
     pid_t team_leader_pid;
-    // int pipe_fd[2];
-    // int pipe_forwards[2];
-    // int pipe_backwards[2];
 };
 #endif // CONFIG_H
