@@ -4,6 +4,7 @@ void player_signals_handler(int signum);
 void set_player_signals();
 void print_player_info();
 struct Player current_player;
+int pause_flag = 0;
 
 int main(int argc, char *argv[])
 {
@@ -102,10 +103,10 @@ void player_signals_handler(int signum)
         // print current player info
         print_player_info();
     }
-    else if (signum == SIGUSR2)
+    else if (signum == SIGUSR2 && !pause_flag)
     {
         printf("Player pid %d and id %d has received the ball\n", getpid(), current_player.id);
-        current_player.has_ball = 1;
+        current_player.has_ball++;
         if (current_player.team_name == 'A')
         {
             // sleep for 0.5 seconds
@@ -118,18 +119,18 @@ void player_signals_handler(int signum)
         }
 
         // now the player should throw the ball to the next player
-        if (current_player.energy >= THROW_ENERGY_COST)
+        if (current_player.energy >= THROW_ENERGY_COST && !pause_flag)
         {
             current_player.energy -= THROW_ENERGY_COST;
-            current_player.has_ball = 0;
+            current_player.has_ball--;
             // send signal to the next player to receive the ball
-            if (current_player.id == 10 || current_player.id == 4) // last player in the team
+            if ((current_player.id == 10 || current_player.id == 4) && !pause_flag) // last player in the team
             {
                 // team leader can recognize that the ball is thrown from the last player
                 kill(current_player.next_player_pid, SIGINT);
                 printf("Player %d has thrown the ball to the leader player %d\n", current_player.id, current_player.next_player_pid);
             }
-            else
+            else if (!pause_flag)
             {
                 kill(current_player.next_player_pid, SIGUSR2);
                 printf("Player %d has thrown the ball to player %d\n", current_player.id, current_player.next_player_pid);
@@ -140,7 +141,7 @@ void player_signals_handler(int signum)
             printf("Player %d does not have enough energy (%d) to throw the ball\n", current_player.id, current_player.energy);
         }
     }
-    else if (signum == SIGINT)
+    else if (signum == SIGINT && !pause_flag)
     {
         // this the leader, and he should throw the ball the leader of the other team
         printf("Leader Player %d has received the ball\n", current_player.id);
@@ -149,9 +150,9 @@ void player_signals_handler(int signum)
             printf("Player %d is not the leader of the team\n", current_player.id);
             exit(1);
         }
-        else
+        else if (!pause_flag)
         {
-            current_player.has_ball = 1;
+            current_player.has_ball++;
             if (current_player.team_name == 'A')
             {
                 // sleep for 0.5 seconds
@@ -164,10 +165,10 @@ void player_signals_handler(int signum)
             }
 
             // now the leader should throw the ball to the leader of the other team
-            if (current_player.energy >= THROW_ENERGY_COST)
+            if (current_player.energy >= THROW_ENERGY_COST && !pause_flag)
             {
                 current_player.energy -= THROW_ENERGY_COST;
-                current_player.has_ball = 0;
+                current_player.has_ball--;
                 // send signal to the leader of other team to receive the ball
                 kill(current_player.team_leader_pid, SIGUSR2);
                 printf("Player %d has thrown the ball to the leader of the other team\n", current_player.id);
@@ -196,9 +197,9 @@ void player_signals_handler(int signum)
     // handle stop signal (will be sent from the parent when the round ends)
     else if (signum == SIGTSTP)
     {
-        // stop the player
+        pause_flag = 1;
         printf("Player %d has been stopped\n", current_player.id);
-        fflush(stdout);
+        // fflush(stdout);
     }
 
     else if (signum == SIGQUIT)

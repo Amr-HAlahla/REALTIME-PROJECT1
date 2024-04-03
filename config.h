@@ -26,27 +26,29 @@
 #define NUM_PLAYERS 6
 
 // Minimum and maximum initial energy levels for players
-#define MIN_PLAYER_ENERGY 50
-#define MAX_PLAYER_ENERGY 100
+#define MIN_PLAYER_ENERGY 200
+#define MAX_PLAYER_ENERGY 250
 
 // Minimum and maximum initial energy levels for team leads
-#define MIN_LEADER_ENERGY 100
-#define MAX_LEADER_ENERGY 150
+#define MIN_LEADER_ENERGY 250
+#define MAX_LEADER_ENERGY 350
 
 // Time for a round in seconds
-#define ROUND_TIME 30 // 30 seconds
+#define ROUND_TIME 20 // 5 seconds
 
 // Maximum number of rounds a team can lose before the game ends
-#define MAX_LOST_ROUNDS 4
+#define MAX_LOST_ROUNDS 2
 
 // Energy cost for throwing a ball
-#define THROW_ENERGY_COST 10
+#define THROW_ENERGY_COST 5
 
 // Energy cost for picking up a dropped ball
 #define PICKUP_ENERGY_COST 5
 
 // Constants for game settings
-#define NUM_ROUNDS 8
+#define NUM_ROUNDS 3
+
+// extern int pause_flag;
 
 struct Player
 {

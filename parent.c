@@ -10,8 +10,7 @@ int num_of_lost_rounds_teamA = 0;
 int num_of_lost_rounds_teamB = 0;
 int num_of_balls_teamA = 0;
 int num_of_balls_teamB = 0;
-int current_balls_teamA = 0;
-int current_balls_teamB = 0;
+// int pause_flag = 0;
 
 void create_public_fifo();
 void initialize_player(int id, pid_t next_player_pid, pid_t team_leader_pid);
@@ -41,6 +40,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Usage: %s No arguments needed\n", argv[0]);
         exit(1);
     }
+
+    printf("Creating players\n");
     pid_t parent_pgid = getpgrp();
     int i = 2 * NUM_PLAYERS - 1; // 11
     for (; i > -1; i--)
@@ -137,7 +138,7 @@ int main(int argc, char *argv[])
         }
         printf("Writing player of id %d and pid %d to private fifo %s\n", players[i].id, players_pids[i], fifo_name);
         close(private_fifo_fd);
-        sleep(2);
+        // sleep(2);
         fflush(stdout);
     }
     printf("Players written to private fifos\n");
@@ -164,16 +165,15 @@ void start_round()
     // reset variables related to the current round
     num_of_balls_teamA = 0;
     num_of_balls_teamB = 0;
-    current_balls_teamA = 0;
-    current_balls_teamB = 0;
     num_of_balls = 0;
     // send signals to the leaders of the teams to start the round
     kill(players_pids[5], SIGUSR2); // team A leader
     printf("Sent signal to team A leader with pid %d and id %d\n", players_pids[5], players[5].id);
-    current_balls_teamA = 1;
+    num_of_balls_teamA = 1;
     kill(players_pids[11], SIGUSR2); // team B leader
     printf("Sent signal to team B leader with pid %d and id %d\n", players_pids[11], players[11].id);
-    current_balls_teamB = 1;
+    num_of_balls_teamB = 1;
+    num_of_balls = 2;
     printf("Round %d has started\n", current_round);
     // set alarm for the round time
     alarm(ROUND_TIME);
@@ -181,22 +181,19 @@ void start_round()
 
 void end_round()
 {
+    // pause_flag = 1; // to prevent players from throwing the ball
     printf("Round %d has ended\n", current_round);
     printf("====================================\n");
     // send signals to the players to stop
     printf("Sending signals to the players to stop\n");
     kill(-parent_pgid, SIGTSTP); // send signal to all players to stop at same time
+    sleep(3);
     fflush(stdout);
-    sleep(1);
-    // now send signals to the players to write their info to the private fifos
     printf("Sending signals to the players to write their info to the private fifos\n");
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
-        kill(players_pids[i], SIGQUIT);
-    }
-    // at the end of the round, read the players info from the private fifos
-    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
-    {
+        kill(players_pids[i], SIGQUIT); // send signal to write the player info to the private fifo
+        sleep(1);
         char fifo_name[20];
         sprintf(fifo_name, "/tmp/fifo%d", players_pids[i]);
         int read_fd = open(fifo_name, O_RDONLY);
@@ -210,15 +207,18 @@ void end_round()
             perror("Error reading from private fifo");
             exit(1);
         }
-        // printf("Reading player of id %d and pid %d to private fifo %s\n", players[i].id, players_pids[i], fifo_name);
         close(read_fd);
     }
+    sleep(1);
+    printf("Players info have been updated after the round\n");
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
         print_player(players[i]);
     }
 
     // check who won that round and update the lost rounds for each team
+    num_of_balls_teamA = 0;
+    num_of_balls_teamB = 0;
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
         if (players[i].team_name == 'A')
@@ -255,11 +255,13 @@ void end_round()
     }
     printf("====================================\n");
     // print the number of lost rounds for each team
-    printf("After %d dounds, Team A has lost %d rounds and Team B has lost %d rounds\n",
+    printf("Round %d finished, Team A has lost %d rounds and Team B has lost %d rounds\n",
            current_round, num_of_lost_rounds_teamA, num_of_lost_rounds_teamB);
     current_round++;
     // end the game
-    raise(SIGQUIT);
+    printf("Sleeping for 5 seconds before starting the next round\n");
+    sleep(5);
+    kill(-parent_pgid, SIGTERM);
 }
 
 // handler for the parent process signals
@@ -309,36 +311,38 @@ void parent_signals_handler(int signum)
         fflush(stdout);
         if (team_name == 'A')
         {
-            current_balls_teamA--; // team A has throw the ball to the other team
-            current_balls_teamB++; // team B has received the ball
-            if (current_balls_teamA == 0)
+            num_of_balls_teamA--; // team A has throw the ball to the other team
+            num_of_balls_teamB++; // team B has received the ball
+            if (num_of_balls_teamA == 0)
             {
                 // send new ball to the leader of team A
                 kill(players_pids[5], SIGUSR2);
                 printf("Parent sent new ball to the leader of team A\n");
-                current_balls_teamA++; // team A received a new ball
+                num_of_balls_teamA++; // team A received a new ball
                 num_of_balls++;
+                printf("Number of balls is %d\n", num_of_balls);
             }
             else
             {
-                printf("Request refused, team A still has %d balls\n", current_balls_teamA);
+                printf("Request refused, team A still has %d balls\n", num_of_balls_teamA);
             }
         }
         else if (team_name == 'B')
         {
-            current_balls_teamB--; // team B has throw the ball to the other team
-            current_balls_teamA++; // team A has received the ball
-            if (current_balls_teamB == 0)
+            num_of_balls_teamB--; // team B has throw the ball to the other team
+            num_of_balls_teamA++; // team A has received the ball
+            if (num_of_balls_teamB == 0)
             {
                 // send new ball to the leader of team B
                 kill(players_pids[11], SIGUSR2);
                 printf("Parent sent new ball to the leader of team B\n");
-                current_balls_teamB++; // team B received a new ball
+                num_of_balls_teamB++; // team B received a new ball
                 num_of_balls++;
+                printf("Number of balls is %d\n", num_of_balls);
             }
             else
             {
-                printf("Request refused, team B still has %d balls\n", current_balls_teamB);
+                printf("Request refused, team B still has %d balls\n", num_of_balls_teamB);
             }
         }
     }
