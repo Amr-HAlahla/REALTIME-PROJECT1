@@ -215,7 +215,6 @@ void end_round()
     {
         print_player(players[i]);
     }
-
     // check who won that round and update the lost rounds for each team
     num_of_balls_teamA = 0;
     num_of_balls_teamB = 0;
@@ -261,7 +260,7 @@ void end_round()
     // end the game
     printf("Sleeping for 5 seconds before starting the next round\n");
     sleep(5);
-    kill(-parent_pgid, SIGTERM);
+    kill(-parent_pgid, SIGQUIT);
 }
 
 // handler for the parent process signals

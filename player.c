@@ -5,6 +5,7 @@ void set_player_signals();
 void print_player_info();
 struct Player current_player;
 int pause_flag = 0;
+struct Player copy_player;
 
 int main(int argc, char *argv[])
 {
@@ -199,13 +200,20 @@ void player_signals_handler(int signum)
     {
         pause_flag = 1;
         printf("Player %d has been stopped\n", current_player.id);
+        // copy the current player to the copy player
+        copy_player.id = current_player.id;
+        copy_player.energy = current_player.energy;
+        copy_player.has_ball = current_player.has_ball;
+        copy_player.team_name = current_player.team_name;
+        copy_player.next_player_pid = current_player.next_player_pid;
+        copy_player.team_leader_pid = current_player.team_leader_pid;
         // fflush(stdout);
     }
 
     else if (signum == SIGQUIT)
     {
         // write the player info on the private fifo
-        printf("Player %d is writing its info to the private fifo\n", current_player.id);
+        // printf("Player %d is writing its info to the private fifo\n", current_player.id);
         char private_fifo[20];
         sprintf(private_fifo, "/tmp/fifo%d", getpid());
         int write_fd = open(private_fifo, O_WRONLY);
@@ -214,19 +222,20 @@ void player_signals_handler(int signum)
             perror("Error opening private fifo for writing");
             exit(1);
         }
-        if (write(write_fd, &current_player, sizeof(struct Player)) == -1)
+        if (write(write_fd, &copy_player, sizeof(struct Player)) == -1)
         {
             perror("Error writing to private fifo");
             exit(1);
         }
-        // printf("Writing player of id %d and pid %d to private fifo %s\n", current_player.id, getpid(), private_fifo);
+        // printf("Copy Player %d from team %c has %d energy and next player is %d and team leader is %d and has %d balls\n",
+        //        copy_player.id, copy_player.team_name, copy_player.energy, copy_player.next_player_pid,
+        //        copy_player.team_leader_pid, copy_player.has_ball);
         close(write_fd);
     }
 }
 
 void print_player_info()
 {
-
     printf("Player %d from team %c has %d energy and next player is %d and team leader is %d and has %d balls\n",
            current_player.id, current_player.team_name, current_player.energy, current_player.next_player_pid, current_player.team_leader_pid, current_player.has_ball);
 }
