@@ -34,7 +34,7 @@
 #define MAX_LEADER_ENERGY 350
 
 // Time for a round in seconds
-#define ROUND_TIME 20 // 5 seconds
+#define ROUND_TIME 15 // 5 seconds
 
 // Maximum number of rounds a team can lose before the game ends
 #define MAX_LOST_ROUNDS 2

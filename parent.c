@@ -10,7 +10,8 @@ int num_of_lost_rounds_teamA = 0;
 int num_of_lost_rounds_teamB = 0;
 int num_of_balls_teamA = 0;
 int num_of_balls_teamB = 0;
-// int pause_flag = 0;
+int round_flag = 0;
+int pause_flag = 0;
 
 void create_public_fifo();
 void initialize_player(int id, pid_t next_player_pid, pid_t team_leader_pid);
@@ -20,6 +21,9 @@ int generate_energy(int type);
 void parent_set_signals();
 void start_round();
 void end_round();
+void update_players_info();
+void end_game_status();
+void ball_request();
 
 pid_t players_pids[2 * NUM_PLAYERS];
 struct Player players[2 * NUM_PLAYERS]; // 6 players each team. 12 players in total
@@ -122,7 +126,6 @@ int main(int argc, char *argv[])
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
         kill(players_pids[i], SIGUSR1);
-        sleep(1);
         char fifo_name[20];
         sprintf(fifo_name, "/tmp/fifo%d", players_pids[i]);
         int private_fifo_fd = open(fifo_name, O_WRONLY);
@@ -136,32 +139,48 @@ int main(int argc, char *argv[])
             perror("writing to private fifo");
             exit(1);
         }
-        printf("Writing player of id %d and pid %d to private fifo %s\n", players[i].id, players_pids[i], fifo_name);
         close(private_fifo_fd);
-        // sleep(2);
-        fflush(stdout);
     }
-    printf("Players written to private fifos\n");
     sleep(1);
-    start_round();
+    printf("Players written to private fifos\n");
     printf("====================================\n");
-    while (1)
+    while (current_round < NUM_ROUNDS)
     {
-        printf("Parent process is waiting for a signal\n");
+        if (round_flag == current_round)
+        {
+            printf("Round %d is about to start\n", current_round);
+            sleep(1);
+            start_round();
+        }
         pause();
     }
-
+    end_game_status();
+    raise(SIGQUIT);
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
         wait(NULL);
     }
     printf("Parent process is done\n");
-
     return 0;
 }
 
 void start_round()
 {
+    round_flag++;
+    if (current_round != 0)
+    {
+        // players info must be updated before starting the next round
+        for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+        {
+            players[i].energy = generate_energy(players[i].id);
+            players[i].has_ball = 0;
+        }
+        update_players_info();
+        // send TSTP signal to flip the pause flag in the players to start the next round
+        kill(-parent_pgid, SIGTSTP);
+    }
+    printf("Wait 2 seconds before starting the round\n");
+    sleep(2);
     // reset variables related to the current round
     num_of_balls_teamA = 0;
     num_of_balls_teamB = 0;
@@ -181,61 +200,12 @@ void start_round()
 
 void end_round()
 {
-    // pause_flag = 1; // to prevent players from throwing the ball
-    printf("Round %d has ended\n", current_round);
     printf("====================================\n");
-    // send signals to the players to stop
-    printf("Sending signals to the players to stop\n");
+    printf("====================================\n");
+    printf("====================================\n");
+    printf("Round %d has ended\n", current_round);
     kill(-parent_pgid, SIGTSTP); // send signal to all players to stop at same time
-    sleep(3);
-    fflush(stdout);
-    printf("Sending signals to the players to write their info to the private fifos\n");
-    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
-    {
-        kill(players_pids[i], SIGQUIT); // send signal to write the player info to the private fifo
-        sleep(1);
-        char fifo_name[20];
-        sprintf(fifo_name, "/tmp/fifo%d", players_pids[i]);
-        int read_fd = open(fifo_name, O_RDONLY);
-        if (read_fd == -1)
-        {
-            perror("Error opening private fifo for reading");
-            exit(1);
-        }
-        if (read(read_fd, &players[i], sizeof(struct Player)) == -1)
-        {
-            perror("Error reading from private fifo");
-            exit(1);
-        }
-        close(read_fd);
-    }
     sleep(1);
-    printf("Players info have been updated after the round\n");
-    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
-    {
-        print_player(players[i]);
-    }
-    // check who won that round and update the lost rounds for each team
-    num_of_balls_teamA = 0;
-    num_of_balls_teamB = 0;
-    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
-    {
-        if (players[i].team_name == 'A')
-        {
-            if (players[i].has_ball)
-            {
-                num_of_balls_teamA += players[i].has_ball; // add the number of balls the player has
-            }
-        }
-        else if (players[i].team_name == 'B')
-        {
-            if (players[i].has_ball)
-            {
-                num_of_balls_teamB += players[i].has_ball; // add the number of balls the player has
-            }
-        }
-    }
-
     printf("Number of balls have been used in that round is %d\n", num_of_balls);
     // check who won the round and update the lost rounds for each team.
     if (num_of_balls_teamA > num_of_balls_teamB)
@@ -252,62 +222,35 @@ void end_round()
     {
         printf("Team A has %d balls and Team B has %d balls, Round %d is a draw\n", num_of_balls_teamA, num_of_balls_teamB, current_round);
     }
-    printf("====================================\n");
     // print the number of lost rounds for each team
     printf("Round %d finished, Team A has lost %d rounds and Team B has lost %d rounds\n",
            current_round, num_of_lost_rounds_teamA, num_of_lost_rounds_teamB);
+    printf("====================================\n");
     current_round++;
-    // end the game
-    printf("Sleeping for 5 seconds before starting the next round\n");
-    sleep(5);
-    kill(-parent_pgid, SIGQUIT);
+    sleep(2);
 }
 
-// handler for the parent process signals
-void parent_signals_handler(int signum)
+void ball_request()
 {
-    if (signum == SIGUSR1)
+    // open public fifo for reading the team name
+    int read_fd = open(PUBLIC, O_RDONLY);
+    if (read_fd == -1)
     {
-        printf("Parent received the signal to start the round\n");
-        printf("=============================\n");
-        start_round();
+        perror("Error opening public fifo for reading");
+        exit(1);
     }
-    else if (signum == SIGQUIT)
+    char team_name;
+    if (read(read_fd, &team_name, sizeof(char)) == -1)
     {
-        printf("Parent received the signal to end the game\n");
-        // kill all childs
-        for (int i = 0; i < 2 * NUM_PLAYERS; i++)
-        {
-            printf("Killing player %d with pid %d\n", i, players_pids[i]);
-            kill(players_pids[i], SIGTERM);
-        }
-        printf("Parent process is done\n");
-        exit(0);
+        perror("Error reading from public fifo");
+        exit(1);
     }
-    else if (signum == SIGTSTP)
+    close(read_fd);
+    printf("Parent received the signal from the leader of team %c\n", team_name);
+    printf("====================================\n");
+    fflush(stdout);
+    if (pause_flag == 0)
     {
-        // donothing
-        printf("Parent process can't be stopped\n");
-    }
-    else if (signum == SIGUSR2)
-    {
-        // open public fifo for reading the team name
-        int read_fd = open(PUBLIC, O_RDONLY);
-        if (read_fd == -1)
-        {
-            perror("Error opening public fifo for reading");
-            exit(1);
-        }
-        char team_name;
-        if (read(read_fd, &team_name, sizeof(char)) == -1)
-        {
-            perror("Error reading from public fifo");
-            exit(1);
-        }
-        close(read_fd);
-        printf("Parent received the signal from the leader of team %c\n", team_name);
-        printf("====================================\n");
-        fflush(stdout);
         if (team_name == 'A')
         {
             num_of_balls_teamA--; // team A has throw the ball to the other team
@@ -344,6 +287,79 @@ void parent_signals_handler(int signum)
                 printf("Request refused, team B still has %d balls\n", num_of_balls_teamB);
             }
         }
+    }
+}
+
+void end_game_status()
+{
+    printf("====================================\n");
+    printf("====================================\n");
+    printf("====================================\n");
+    printf("Game has ended\n");
+    printf("%d Rounds have been played\n", current_round);
+    printf("Team A has lost %d rounds and Team B has lost %d rounds\n", num_of_lost_rounds_teamA, num_of_lost_rounds_teamB);
+    char winner_team = num_of_lost_rounds_teamA > num_of_lost_rounds_teamB ? 'B' : 'A';
+    printf("Team %c has won the game\n", winner_team);
+    printf("====================================\n");
+    printf("====================================\n");
+    printf("====================================\n");
+}
+
+void update_players_info()
+{
+    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+    {
+        // send signal to player to make it read its info from the private fifo
+        kill(players_pids[i], SIGUSR1);
+        char fifo_name[20];
+        sprintf(fifo_name, "/tmp/fifo%d", players_pids[i]);
+        int private_fifo_fd = open(fifo_name, O_WRONLY);
+        if (private_fifo_fd == -1)
+        {
+            perror("open");
+            exit(1);
+        }
+        if (write(private_fifo_fd, &players[i], sizeof(struct Player)) == -1)
+        {
+            perror("writing to private fifo");
+            exit(1);
+        }
+        close(private_fifo_fd);
+    }
+    sleep(1);
+    printf("Players info updated\n");
+    printf("====================================\n");
+}
+
+// handler for the parent process signals
+void parent_signals_handler(int signum)
+{
+    if (signum == SIGUSR1)
+    {
+        printf("Parent received the signal to start the round\n");
+        printf("=============================\n");
+        start_round();
+    }
+    else if (signum == SIGQUIT)
+    {
+        printf("Parent received the signal to end the game\n");
+        // kill all childs
+        for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+        {
+            printf("Killing player %d with pid %d\n", i, players_pids[i]);
+            kill(players_pids[i], SIGTERM);
+        }
+        printf("Parent process is done\n");
+        exit(0);
+    }
+    else if (signum == SIGTSTP)
+    {
+        pause_flag = !pause_flag;
+    }
+    else if (signum == SIGUSR2)
+    {
+        // leader asked for a new ball
+        ball_request();
     }
     else if (signum == SIGALRM)
     {
