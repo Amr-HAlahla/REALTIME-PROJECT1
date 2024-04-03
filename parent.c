@@ -12,6 +12,7 @@ int num_of_balls_teamA = 0;
 int num_of_balls_teamB = 0;
 int round_flag = 0;
 int pause_flag = 0;
+int played_time = 0; // in seconds
 
 void create_public_fifo();
 void initialize_player(int id, pid_t next_player_pid, pid_t team_leader_pid);
@@ -144,7 +145,7 @@ int main(int argc, char *argv[])
     sleep(1);
     printf("Players written to private fifos\n");
     printf("====================================\n");
-    while (current_round < NUM_ROUNDS)
+    while (num_of_lost_rounds_teamA < MAX_LOST_ROUNDS && num_of_lost_rounds_teamB < MAX_LOST_ROUNDS)
     {
         if (round_flag == current_round)
         {
@@ -154,8 +155,19 @@ int main(int argc, char *argv[])
         }
         pause();
     }
-    end_game_status();
-    raise(SIGQUIT);
+    // determine the team that exceeded the maximum number of lost rounds
+    if (num_of_lost_rounds_teamA >= MAX_LOST_ROUNDS)
+    {
+        printf("Team A has lost %d rounds and exceeded the maximum number of lost rounds %d\n",
+               num_of_lost_rounds_teamA, MAX_LOST_ROUNDS);
+    }
+    else if (num_of_lost_rounds_teamB >= MAX_LOST_ROUNDS)
+    {
+        printf("Team B has lost %d rounds and exceeded the maximum number of lost rounds %d\n",
+               num_of_lost_rounds_teamB, MAX_LOST_ROUNDS);
+    }
+    end_game_status(); // game time is over
+    raise(SIGQUIT);    // end the game
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
         wait(NULL);
@@ -363,7 +375,18 @@ void parent_signals_handler(int signum)
     }
     else if (signum == SIGALRM)
     {
-        end_round();
+        played_time += ROUND_TIME;
+        if (played_time >= GAME_TIME)
+        {
+            printf("Game time is over\n");
+            end_round();
+            end_game_status();
+            raise(SIGQUIT);
+        }
+        else
+        {
+            end_round();
+        }
     }
     else
     {
