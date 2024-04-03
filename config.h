@@ -38,7 +38,7 @@
 #define ROUND_TIME 20 // 5 seconds
 
 // Maximum number of rounds a team can lose before the game ends
-#define MAX_LOST_ROUNDS 4
+#define MAX_LOST_ROUNDS 3
 
 // Energy cost for throwing a ball
 #define THROW_ENERGY_COST 10
@@ -49,9 +49,7 @@
 // Constants for game settings
 #define NUM_ROUNDS 3
 
-#define GAME_TIME 180 // 3 minutes => 9 rounds
-
-// extern int pause_flag;
+#define GAME_TIME 120 // 2 minutes => 6 rounds
 
 struct Player
 {

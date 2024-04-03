@@ -45,7 +45,6 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Usage: %s No arguments needed\n", argv[0]);
         exit(1);
     }
-
     printf("Creating players\n");
     pid_t parent_pgid = getpgrp();
     int i = 2 * NUM_PLAYERS - 1; // 11
@@ -439,7 +438,7 @@ void create_public_fifo()
 
 int generate_energy(int id)
 {
-    srand(time(NULL));
+    srand(getpid() + players_pids[id] + id + current_round + time(NULL));
     int range;
     // it its id is 5 or 11 then it is a team leader, else its normal player
     if (id == 5 || id == 11)

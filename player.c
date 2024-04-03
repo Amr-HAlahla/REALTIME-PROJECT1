@@ -12,8 +12,7 @@ struct Player copy_player;
 
 int main(int argc, char *argv[])
 {
-    srand(time(NULL));
-    // int i = 0;
+    srand(time(NULL) + getpid() + current_player.energy);
     if (argc != 1)
     {
         fprintf(stderr, "Usage: %s No arguments needed\n", argv[0]);
@@ -51,7 +50,7 @@ void player_receive_ball()
             sleep_time = 2 - ((energy_level - MIN_PLAYER_ENERGY) /
                               (double)(MAX_PLAYER_ENERGY - MIN_PLAYER_ENERGY) * 1.5);
         }
-        sleep_time = fabs(sleep_time);
+        sleep_time = fabs(sleep_time); // get the absolute value
         // printf("Sleep time for player %d: %f seconds\n", current_player.id, sleep_time);
         sleep_time = sleep_time < 0.5 ? 0.5 : (sleep_time > 2 ? 2 : sleep_time);
         if (sleep_time < 0)
@@ -107,7 +106,7 @@ void leader_receive_ball()
             double sleep_time;
             sleep_time = 2 - ((energy_level - MIN_LEADER_ENERGY) /
                               (double)(MAX_LEADER_ENERGY - MIN_LEADER_ENERGY) * 1.5);
-            sleep_time = fabs(sleep_time);
+            sleep_time = fabs(sleep_time); // make sure the sleep time is positive
             // printf("Sleep time for leader player %d: %f seconds\n", current_player.id, sleep_time);
             sleep_time = sleep_time < 0.5 ? 0.5 : (sleep_time > 2 ? 2 : sleep_time);
             if (sleep_time < 0)
