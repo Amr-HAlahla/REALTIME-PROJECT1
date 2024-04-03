@@ -1,6 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <math.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -26,12 +27,12 @@
 #define NUM_PLAYERS 6
 
 // Minimum and maximum initial energy levels for players
-#define MIN_PLAYER_ENERGY 200
-#define MAX_PLAYER_ENERGY 250
+#define MIN_PLAYER_ENERGY 100
+#define MAX_PLAYER_ENERGY 150
 
 // Minimum and maximum initial energy levels for team leads
-#define MIN_LEADER_ENERGY 250
-#define MAX_LEADER_ENERGY 350
+#define MIN_LEADER_ENERGY 150
+#define MAX_LEADER_ENERGY 200
 
 // Time for a round in seconds
 #define ROUND_TIME 20 // 5 seconds
@@ -40,7 +41,7 @@
 #define MAX_LOST_ROUNDS 4
 
 // Energy cost for throwing a ball
-#define THROW_ENERGY_COST 5
+#define THROW_ENERGY_COST 10
 
 // Energy cost for picking up a dropped ball
 #define PICKUP_ENERGY_COST 5
@@ -48,7 +49,7 @@
 // Constants for game settings
 #define NUM_ROUNDS 3
 
-#define GAME_TIME 180 // 3 minutes
+#define GAME_TIME 180 // 3 minutes => 9 rounds
 
 // extern int pause_flag;
 

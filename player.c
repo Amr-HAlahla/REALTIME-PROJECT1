@@ -12,6 +12,7 @@ struct Player copy_player;
 
 int main(int argc, char *argv[])
 {
+    srand(time(NULL));
     // int i = 0;
     if (argc != 1)
     {
@@ -34,16 +35,32 @@ void player_receive_ball()
     {
         printf("Player pid %d and id %d has received the ball\n", getpid(), current_player.id);
         current_player.has_ball++;
-        if (current_player.team_name == 'A')
+        // Generate a sleep time between 0.5 and 2 seconds
+        int energy_level = current_player.energy;
+        double sleep_time;
+
+        if (current_player.id == 5 || current_player.id == 11)
         {
-            // sleep for 0.5 seconds
-            usleep(500000);
+            // This is a leader player
+            sleep_time = 2 - ((energy_level - MIN_LEADER_ENERGY) /
+                              (double)(MAX_LEADER_ENERGY - MIN_LEADER_ENERGY) * 1.5);
         }
-        else if (current_player.team_name == 'B')
+        else
         {
-            // sleep for 1 second
-            usleep(1000000);
+            // This is a normal player
+            sleep_time = 2 - ((energy_level - MIN_PLAYER_ENERGY) /
+                              (double)(MAX_PLAYER_ENERGY - MIN_PLAYER_ENERGY) * 1.5);
         }
+        sleep_time = fabs(sleep_time);
+        // printf("Sleep time for player %d: %f seconds\n", current_player.id, sleep_time);
+        sleep_time = sleep_time < 0.5 ? 0.5 : (sleep_time > 2 ? 2 : sleep_time);
+        if (sleep_time < 0)
+        {
+            printf("Player %d has negative sleep time\n", current_player.id);
+            exit(1);
+        }
+
+        usleep((unsigned int)(sleep_time * 1000000));
         if (pause_flag == 0)
         {
             // now the player should throw the ball to the next player
@@ -86,16 +103,20 @@ void leader_receive_ball()
         else
         {
             current_player.has_ball++;
-            if (current_player.team_name == 'A')
+            int energy_level = current_player.energy;
+            double sleep_time;
+            sleep_time = 2 - ((energy_level - MIN_LEADER_ENERGY) /
+                              (double)(MAX_LEADER_ENERGY - MIN_LEADER_ENERGY) * 1.5);
+            sleep_time = fabs(sleep_time);
+            // printf("Sleep time for leader player %d: %f seconds\n", current_player.id, sleep_time);
+            sleep_time = sleep_time < 0.5 ? 0.5 : (sleep_time > 2 ? 2 : sleep_time);
+            if (sleep_time < 0)
             {
-                // sleep for 0.5 seconds
-                usleep(500000);
+                printf("Player %d has negative sleep time\n", current_player.id);
+                exit(1);
             }
-            else if (current_player.team_name == 'B')
-            {
-                // sleep for 1 second
-                usleep(1000000);
-            }
+            usleep((unsigned int)(sleep_time * 1000000));
+
             if (pause_flag == 0)
             {
                 // now the leader should throw the ball to the leader of the other team
@@ -150,10 +171,7 @@ void player_signals_handler(int signum)
             perror("Error reading from private fifo");
             exit(1);
         }
-        // printf("Reading player of id %d and pid %d to private fifo %s\n", current_player.id, getpid(), private_fifo);
         close(read_fd);
-        // print current player info
-        // print_player_info();
     }
     else if (signum == SIGUSR2)
     {

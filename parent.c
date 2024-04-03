@@ -13,6 +13,7 @@ int num_of_balls_teamB = 0;
 int round_flag = 0;
 int pause_flag = 0;
 int played_time = 0; // in seconds
+int end_status = 0;
 
 void create_public_fifo();
 void initialize_player(int id, pid_t next_player_pid, pid_t team_leader_pid);
@@ -23,17 +24,16 @@ void parent_set_signals();
 void start_round();
 void end_round();
 void update_players_info();
-void end_game_status();
+void end_game_statistics();
 void ball_request();
 
 pid_t players_pids[2 * NUM_PLAYERS];
-struct Player players[2 * NUM_PLAYERS]; // 6 players each team. 12 players in total
-pid_t parent_pgid;
+struct Player players[2 * NUM_PLAYERS];
 
-// int public_fifo_fd;
-pid_t pid;
-pid_t next_player_pid;
-pid_t team_leader_pid;
+pid_t parent_pgid;     // parent process group id to send signals to all players
+pid_t pid;             // to store the pid of the child process
+pid_t next_player_pid; // to store the pid of the next player
+pid_t team_leader_pid; // to store the pid of the team leader
 
 int running = 1;
 
@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
     {
         if (round_flag == current_round)
         {
-            printf("Round %d is about to start\n", current_round);
+            printf("Round %d is about to start\n", current_round + 1);
             sleep(1);
             start_round();
         }
@@ -166,8 +166,9 @@ int main(int argc, char *argv[])
         printf("Team B has lost %d rounds and exceeded the maximum number of lost rounds %d\n",
                num_of_lost_rounds_teamB, MAX_LOST_ROUNDS);
     }
-    end_game_status(); // game time is over
-    raise(SIGQUIT);    // end the game
+    end_status = 1;
+    end_game_statistics(); // print the game status
+    raise(SIGQUIT);        // end the game
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
         wait(NULL);
@@ -205,7 +206,7 @@ void start_round()
     printf("Sent signal to team B leader with pid %d and id %d\n", players_pids[11], players[11].id);
     num_of_balls_teamB = 1;
     num_of_balls = 2;
-    printf("Round %d has started\n", current_round);
+    printf("Round %d has started\n", current_round + 1);
     // set alarm for the round time
     alarm(ROUND_TIME);
 }
@@ -215,7 +216,7 @@ void end_round()
     printf("====================================\n");
     printf("====================================\n");
     printf("====================================\n");
-    printf("Round %d has ended\n", current_round);
+    printf("Round %d has ended\n", current_round + 1);
     kill(-parent_pgid, SIGTSTP); // send signal to all players to stop at same time
     sleep(1);
     printf("Number of balls have been used in that round is %d\n", num_of_balls);
@@ -237,6 +238,7 @@ void end_round()
     // print the number of lost rounds for each team
     printf("Round %d finished, Team A has lost %d rounds and Team B has lost %d rounds\n",
            current_round, num_of_lost_rounds_teamA, num_of_lost_rounds_teamB);
+    printf("Game Score After %d rounds: Team A %d - %d Team B\n", current_round + 1, num_of_lost_rounds_teamB, num_of_lost_rounds_teamA);
     printf("====================================\n");
     current_round++;
     sleep(2);
@@ -302,15 +304,23 @@ void ball_request()
     }
 }
 
-void end_game_status()
+void end_game_statistics()
 {
     printf("====================================\n");
     printf("====================================\n");
     printf("====================================\n");
-    printf("Game has ended\n");
+    if (end_status == 0)
+    {
+        printf("Game ended because the time is over\n");
+    }
+    else
+    {
+        printf("Game ended because one of the teams exceeded the maximum number of lost rounds\n");
+    }
     printf("%d Rounds have been played\n", current_round);
     printf("Team A has lost %d rounds and Team B has lost %d rounds\n", num_of_lost_rounds_teamA, num_of_lost_rounds_teamB);
     char winner_team = num_of_lost_rounds_teamA > num_of_lost_rounds_teamB ? 'B' : 'A';
+    printf("Final Game Score: Team A %d - %d Team B\n", num_of_lost_rounds_teamB, num_of_lost_rounds_teamA);
     printf("Team %c has won the game\n", winner_team);
     printf("====================================\n");
     printf("====================================\n");
@@ -378,9 +388,10 @@ void parent_signals_handler(int signum)
         played_time += ROUND_TIME;
         if (played_time >= GAME_TIME)
         {
+            end_status = 0; // game ended because the time is over
             printf("Game time is over\n");
             end_round();
-            end_game_status();
+            end_game_statistics();
             raise(SIGQUIT);
         }
         else
@@ -397,7 +408,6 @@ void parent_signals_handler(int signum)
 // create a public fifo
 void create_public_fifo()
 {
-
     // create private fifos for each player , nameing will belike this "fifo%d" where %d is the pid of the player
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
