@@ -35,21 +35,21 @@
 #define MAX_LEADER_ENERGY 200
 
 // Time for a round in seconds
-#define ROUND_TIME 20 // 5 seconds
+#define ROUND_TIME 50 // 1 minute
 
 // Maximum number of rounds a team can lose before the game ends
 #define MAX_LOST_ROUNDS 3
 
 // Energy cost for throwing a ball
-#define THROW_ENERGY_COST 10
+#define THROW_ENERGY_COST 15
 
 // Energy cost for picking up a dropped ball
-#define PICKUP_ENERGY_COST 5
+#define PICKUP_ENERGY_COST 5 // (1 / energy) ratio will be used as a probability of failuer to receive the ball.
 
 // Constants for game settings
 #define NUM_ROUNDS 3
 
-#define GAME_TIME 120 // 2 minutes => 6 rounds
+#define GAME_TIME 480 // 8 minutes
 
 struct Player
 {
@@ -60,4 +60,18 @@ struct Player
     pid_t next_player_pid;
     pid_t team_leader_pid;
 };
+
+struct Ball
+{
+    int ball_id;
+    int last_player_id; // initial value is -1
+    int next_player_id; // initial value is -1
+    float x, y;
+};
+
+// struct GameState
+// {
+
+// };
+
 #endif // CONFIG_H

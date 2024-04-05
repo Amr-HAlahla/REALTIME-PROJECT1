@@ -4,7 +4,7 @@ typedef void (*sighandler_t)(int);
 
 sighandler_t sigset(int sig, sighandler_t disp);
 
-int num_of_balls = 0;
+extern int num_of_balls = 0;
 int current_round = 0;
 int num_of_lost_rounds_teamA = 0;
 int num_of_lost_rounds_teamB = 0;
@@ -94,30 +94,17 @@ int main(int argc, char *argv[])
 
     create_public_fifo();
     parent_set_signals();
+
     sleep(1);
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
         printf("Player %d pid: %d\n", i, players_pids[i]);
     }
     // set next player and team leader for each player
-    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
-    {
-        if (i == 11) // team B leader
-        {
-            players[i].next_player_pid = players_pids[6]; // first player in team B
-            players[i].team_leader_pid = players_pids[5]; // team A leader
-        }
-        else if (i == 5) // team A leader
-        {
-            players[i].next_player_pid = players_pids[0];  // first player in team A
-            players[i].team_leader_pid = players_pids[11]; // team B leader
-        }
-        else
-        {
-            players[i].next_player_pid = players_pids[i + 1]; // next player
-            players[i].team_leader_pid = -1;                  // no team leader
-        }
-    }
+    players[11].next_player_pid = players_pids[6]; // first player in team B
+    players[11].team_leader_pid = players_pids[5]; // team A leaderplayers[11].
+    players[5].next_player_pid = players_pids[0];  // first player in team A
+
     printf("====================================\n");
     printf("Sending signals to the players to receive their info from the private fifo\n");
     printf("====================================\n");
@@ -236,7 +223,7 @@ void end_round()
     }
     // print the number of lost rounds for each team
     printf("Round %d finished, Team A has lost %d rounds and Team B has lost %d rounds\n",
-           current_round, num_of_lost_rounds_teamA, num_of_lost_rounds_teamB);
+           current_round + 1, num_of_lost_rounds_teamA, num_of_lost_rounds_teamB);
     printf("Game Score After %d rounds: Team A %d - %d Team B\n", current_round + 1, num_of_lost_rounds_teamB, num_of_lost_rounds_teamA);
     printf("====================================\n");
     current_round++;
@@ -426,6 +413,29 @@ void create_public_fifo()
             exit(-1);
         }
     }
+
+    /*remove and creates fifos for the public communication gui and players!
+    fifo name: fifo%d => where %d is the of the player
+     */
+    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+    {
+        char fifo_name[20];
+        sprintf(fifo_name, "/tmp/fifo%d", i);
+        if (access(fifo_name, F_OK) == 0)
+        {
+            if (remove(fifo_name) == -1)
+            {
+                perror("Error removing fifo");
+                exit(-1);
+            }
+        }
+        if (mkfifo(fifo_name, 0666) == -1)
+        {
+            perror("Error creating fifo");
+            exit(-1);
+        }
+    }
+
     printf("Private fifos created\n");
 
     remove(PUBLIC);

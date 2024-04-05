@@ -5,10 +5,17 @@ void set_player_signals();
 void print_player_info();
 void leader_receive_ball();
 void player_receive_ball();
+void handle_low_energy();
+void player_throw_ball();
+void leader_throw_ball();
 
 struct Player current_player;
 int pause_flag = 0;
-struct Player copy_player;
+int energy_flag = 0;
+
+int last_player_id = 0;
+int next_player_id = 0;
+int ball_id = 0;
 
 int main(int argc, char *argv[])
 {
@@ -65,26 +72,73 @@ void player_receive_ball()
             // now the player should throw the ball to the next player
             if (current_player.energy >= THROW_ENERGY_COST)
             {
-                current_player.energy -= THROW_ENERGY_COST;
-                current_player.has_ball--;
-                // send signal to the next player to receive the ball
-                if (current_player.id == 10 || current_player.id == 4) // last player in the team
-                {
-                    // team leader can recognize that the ball is thrown from the last player
-                    kill(current_player.next_player_pid, SIGINT);
-                    printf("Player %d has thrown the ball to the leader player %d\n", current_player.id, current_player.next_player_pid);
-                }
-                else
-                {
-                    kill(current_player.next_player_pid, SIGUSR2);
-                    printf("Player %d has thrown the ball to player %d\n", current_player.id, current_player.next_player_pid);
-                }
+                player_throw_ball();
             }
             else
             {
                 printf("Player %d does not have enough energy (%d) to throw the ball\n", current_player.id, current_player.energy);
+                energy_flag = 1;
+                while (energy_flag && pause_flag == 0)
+                {
+                    handle_low_energy();
+                }
+                if (pause_flag == 0)
+                {
+                    player_throw_ball();
+                }
             }
         }
+    }
+}
+
+void player_throw_ball()
+{
+    if (pause_flag == 0)
+    {
+        current_player.energy -= THROW_ENERGY_COST;
+        current_player.has_ball--;
+        // send signal to the next player to receive the ball
+        if (current_player.id == 10 || current_player.id == 4) // last player in the team
+        {
+            // team leader can recognize that the ball is thrown from the last player
+            kill(current_player.next_player_pid, SIGINT);
+            printf("Player %d has thrown the ball to the leader player %d, and have energy %d\n",
+                   current_player.id, current_player.next_player_pid, current_player.energy);
+        }
+        else
+        {
+            kill(current_player.next_player_pid, SIGUSR2);
+            printf("Player %d has thrown the ball to player %d, and have energy %d\n",
+                   current_player.id, current_player.next_player_pid, current_player.energy);
+        }
+    }
+}
+
+void leader_throw_ball()
+{
+    if (pause_flag == 0)
+    {
+        current_player.energy -= THROW_ENERGY_COST;
+        current_player.has_ball--;
+        // send signal to the leader of other team to receive the ball
+        kill(current_player.team_leader_pid, SIGUSR2);
+        printf("Player %d has thrown the ball to the leader of the other team, and have energy %d\n",
+               current_player.id, current_player.energy);
+        // after leader throws the ball, ask parent for a new ball.
+        kill(getppid(), SIGUSR2);
+        // write the team name to the public fifo
+        int write_fd = open(PUBLIC, O_WRONLY);
+        if (write_fd == -1)
+        {
+            perror("Error opening public fifo for writing");
+            exit(1);
+        }
+        if (write(write_fd, &current_player.team_name, sizeof(char)) == -1)
+        {
+            perror("Error writing to public fifo");
+            exit(1);
+        }
+        close(write_fd);
     }
 }
 
@@ -121,33 +175,54 @@ void leader_receive_ball()
                 // now the leader should throw the ball to the leader of the other team
                 if (current_player.energy >= THROW_ENERGY_COST)
                 {
-                    current_player.energy -= THROW_ENERGY_COST;
-                    current_player.has_ball--;
-                    // send signal to the leader of other team to receive the ball
-                    kill(current_player.team_leader_pid, SIGUSR2);
-                    printf("Player %d has thrown the ball to the leader of the other team\n", current_player.id);
-                    // after leader throws the ball, ask parent for a new ball.
-                    kill(getppid(), SIGUSR2);
-                    // write the team name to the public fifo
-                    int write_fd = open(PUBLIC, O_WRONLY);
-                    if (write_fd == -1)
-                    {
-                        perror("Error opening public fifo for writing");
-                        exit(1);
-                    }
-                    if (write(write_fd, &current_player.team_name, sizeof(char)) == -1)
-                    {
-                        perror("Error writing to public fifo");
-                        exit(1);
-                    }
-                    close(write_fd);
+                    leader_throw_ball();
                 }
                 else
                 {
+                    energy_flag = 1; // energy is not enough
                     printf("Leader Player %d does not have enough energy (%d) to throw the ball\n", current_player.id, current_player.energy);
+                    while (energy_flag && pause_flag == 0)
+                    {
+                        handle_low_energy();
+                    }
+                    if (pause_flag == 0)
+                    {
+                        leader_throw_ball();
+                    }
                 }
             }
         }
+    }
+}
+
+void handle_low_energy()
+{
+    /*
+    if the player does not have enough energy to throw the ball
+    he should sleep short time between 0.2 and 1 seconds to recharge energy
+    energy will be recharged by range between THROW_ENERGY_COST/2 and 2*THROW_ENERGY_COST
+    */
+    if (pause_flag == 0)
+    {
+        int energy_level = current_player.energy;
+        printf("Player %d is recharging energy\n", current_player.id);
+        double sleep_time = (rand() % 8 + 2) / 10.0; // generate a random sleep time between 0.2 and 1 seconds
+        usleep((unsigned int)(sleep_time * 1000000));
+        // recharge energy by a random value between THROW_ENERGY_COST/2 and 2*THROW_ENERGY_COST
+        int range = 3 * THROW_ENERGY_COST / 2;
+        int lower_bound = THROW_ENERGY_COST / 2;
+        current_player.energy += (rand() % range) + lower_bound;
+        if (current_player.energy >= THROW_ENERGY_COST) // if the energy is enough now to throw the ball
+        {
+            energy_flag = 0; // exit the loop (No problems with energy level)
+        }
+        else
+        {
+            energy_flag = 1; // continue the loop
+        }
+        // print how much energy have been recharged, and the new energy level
+        printf("Player %d has slept for %0.3f Seconds, recharged %d energy, and now has %d energy\n",
+               current_player.id, sleep_time, current_player.energy - energy_level, current_player.energy);
     }
 }
 
@@ -190,20 +265,7 @@ void player_signals_handler(int signum)
 
     else if (signum == SIGQUIT)
     {
-        char private_fifo[20];
-        sprintf(private_fifo, "/tmp/fifo%d", getpid());
-        int write_fd = open(private_fifo, O_WRONLY);
-        if (write_fd == -1)
-        {
-            perror("Error opening private fifo for writing");
-            exit(1);
-        }
-        if (write(write_fd, &copy_player, sizeof(struct Player)) == -1)
-        {
-            perror("Error writing to private fifo");
-            exit(1);
-        }
-        close(write_fd);
+        // don't do anything
     }
 }
 
