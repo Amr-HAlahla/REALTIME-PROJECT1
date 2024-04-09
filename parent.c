@@ -27,6 +27,14 @@ void update_players_info();
 void end_game_statistics();
 void ball_request();
 
+#ifndef ROUND_TIME
+#define ROUND_TIME 35
+#endif
+
+#ifndef GAME_TIME
+#define GAME_TIME 210
+#endif
+
 pid_t players_pids[2 * NUM_PLAYERS];
 struct Player players[2 * NUM_PLAYERS];
 
@@ -34,6 +42,7 @@ pid_t parent_pgid;     // parent process group id to send signals to all players
 pid_t pid;             // to store the pid of the child process
 pid_t next_player_pid; // to store the pid of the next player
 pid_t team_leader_pid; // to store the pid of the team leader
+pid_t gui_pid;         // to store the pid of the gui process
 
 int running = 1;
 
@@ -100,10 +109,59 @@ int main(int argc, char *argv[])
     {
         printf("Player %d pid: %d\n", i, players_pids[i]);
     }
+
+#ifdef GUI
+    gui_pid = fork();
+    if (gui_pid == -1)
+    {
+        perror("fork gui failed\n");
+        exit(3);
+    }
+
+    // GUI process
+    if (gui_pid == 0)
+    {
+        // Allocate memory for arguments array
+        char *args[NUM_PLAYERS * 2 + 1]; // +1 for NULL terminator
+
+        // Populate arguments array with player IDs
+        for (int i = 0; i < NUM_PLAYERS * 2; i++)
+        {
+            // Allocate memory for ID string
+            args[i] = (char *)malloc(10); // Assuming maximum 10 characters for ID string
+            if (args[i] == NULL)
+            {
+                perror("malloc failed");
+                exit(EXIT_FAILURE);
+            }
+            // Convert player ID to string and copy to args array
+            snprintf(args[i], 10, "%d", players_pids[i]);
+        }
+
+        // Null-terminate the argument list
+        args[NUM_PLAYERS * 2] = NULL;
+
+        // Execute the GUI program with the arguments
+        if (execv("./gui", args) == -1)
+        {
+            perror("execv");
+            exit(EXIT_FAILURE);
+        }
+    }
+#endif
     // set next player and team leader for each player
     players[11].next_player_pid = players_pids[6]; // first player in team B
     players[11].team_leader_pid = players_pids[5]; // team A leaderplayers[11].
     players[5].next_player_pid = players_pids[0];  // first player in team A
+
+#ifdef GUI
+    // assign gui pid for each player
+    for (int i = 0; i < 2 * NUM_PLAYERS; i++)
+    {
+        players[i].gui_pid = gui_pid;
+    }
+    printf("GUI PID is %d\n", gui_pid);
+#endif
 
     printf("====================================\n");
     printf("Sending signals to the players to receive their info from the private fifo\n");
@@ -154,7 +212,10 @@ int main(int argc, char *argv[])
     }
     end_status = 1;
     end_game_statistics(); // print the game status
-    raise(SIGQUIT);        // end the game
+#ifdef GUI
+    kill(gui_pid, SIGQUIT); // end the GUI
+#endif
+    raise(SIGQUIT); // end the game
     for (int i = 0; i < 2 * NUM_PLAYERS; i++)
     {
         wait(NULL);
@@ -168,6 +229,9 @@ void start_round()
     round_flag++;
     if (current_round != 0)
     {
+#ifdef GUI
+        kill(gui_pid, SIGINT); /* send signal to the GUI to stop/start the round */
+#endif
         // players info must be updated before starting the next round
         for (int i = 0; i < 2 * NUM_PLAYERS; i++)
         {
@@ -184,6 +248,14 @@ void start_round()
     num_of_balls_teamA = 0;
     num_of_balls_teamB = 0;
     num_of_balls = 0;
+#ifdef GUI
+    /* Signals to assign new balls for each team in the GUI */
+    kill(gui_pid, SIGBUS);
+    usleep(1);
+    kill(gui_pid, SIGCONT);
+    sleep(1);
+#endif
+
     // send signals to the leaders of the teams to start the round
     kill(players_pids[5], SIGUSR2); // team A leader
     printf("Sent signal to team A leader with pid %d and id %d\n", players_pids[5], players[5].id);
@@ -194,6 +266,7 @@ void start_round()
     num_of_balls = 2;
     printf("Round %d has started\n", current_round + 1);
     // set alarm for the round time
+    printf("Round time is %d seconds\n", ROUND_TIME);
     alarm(ROUND_TIME);
 }
 
@@ -205,6 +278,9 @@ void end_round()
     printf("Round %d has ended\n", current_round + 1);
     kill(-parent_pgid, SIGTSTP); // send signal to all players to stop at same time
     sleep(1);
+#ifdef GUI
+    kill(gui_pid, SIGINT); /* send signal to the GUI to stop the round */
+#endif
     printf("Number of balls have been used in that round is %d\n", num_of_balls);
     // check who won the round and update the lost rounds for each team.
     if (num_of_balls_teamA > num_of_balls_teamB)
@@ -257,6 +333,10 @@ void ball_request()
             num_of_balls_teamB++; // team B has received the ball
             if (num_of_balls_teamA == 0)
             {
+#ifdef GUI
+                kill(gui_pid, SIGBUS); /* assign new ball for team A in the GUI*/
+                usleep(500000);        // sleep for 0.5 seconds
+#endif
                 // send new ball to the leader of team A
                 kill(players_pids[5], SIGUSR2);
                 printf("Parent sent new ball to the leader of team A\n");
@@ -271,6 +351,10 @@ void ball_request()
         }
         else if (team_name == 'B')
         {
+#ifdef GUI
+            kill(gui_pid, SIGCONT); /* assigne new ball for team B in the GUI*/
+            usleep(500000);         // sleep for 0.5 seconds
+#endif
             num_of_balls_teamB--; // team B has throw the ball to the other team
             num_of_balls_teamA++; // team A has received the ball
             if (num_of_balls_teamB == 0)
@@ -387,6 +471,9 @@ void parent_signals_handler(int signum)
             printf("Game time is over\n");
             end_round();
             end_game_statistics();
+#ifdef GUI
+            kill(gui_pid, SIGQUIT);
+#endif
             raise(SIGQUIT);
         }
         else
@@ -453,6 +540,21 @@ void create_public_fifo()
         perror("Error");
         exit(-1);
     }
+
+#ifdef GUI
+    remove(PRIVATE);
+    if (mkfifo(PRIVATE, 0666) == -1)
+    {
+        perror("Error");
+        exit(-1);
+    }
+    remove(PRIVATE2);
+    if (mkfifo(PRIVATE2, 0666) == -1)
+    {
+        perror("Error");
+        exit(-1);
+    }
+#endif
 }
 
 int generate_energy(int id)

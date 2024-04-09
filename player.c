@@ -126,6 +126,26 @@ void player_throw_ball()
 {
     if (pause_flag == 0)
     {
+#ifdef GUI
+        pid_t player_pid = getpid();
+        // printf("Player %d has Written %d to the GUI\n", current_player.id, player_pid);
+        kill(current_player.gui_pid, SIGUSR1);
+        usleep(500000); // sleep for 0.5 seconds
+        // open PRIVATE fifo to write the message to the GUI
+        int write_fd_gui = open(PRIVATE, O_WRONLY);
+        if (write_fd_gui == -1)
+        {
+            perror("Error opening private fifo for writing");
+            exit(1);
+        }
+        /* Write the player pid to the FIFO*/
+        if (write(write_fd_gui, &player_pid, sizeof(pid_t)) == -1)
+        {
+            perror("Error writing to private fifo");
+            exit(1);
+        }
+        close(write_fd_gui);
+#endif
         current_player.energy -= THROW_ENERGY_COST;
         current_player.has_ball--;
         int next_player_id;
@@ -153,14 +173,32 @@ void leader_throw_ball()
 {
     if (pause_flag == 0)
     {
+#ifdef GUI
+        pid_t player_pid = getpid();
+        // printf("Leader %d has Written %d to the GUI\n", current_player.id, player_pid);
+        kill(current_player.gui_pid, SIGUSR2);
+        usleep(500000); // sleep for 0.5 seconds
+        // open PRIVATE fifo to write the message to the GUI
+        int write_fd_gui = open(PRIVATE2, O_WRONLY);
+        if (write_fd_gui == -1)
+        {
+            perror("Error opening private fifo for writing");
+            exit(1);
+        }
+        /* Write the player pid to the FIFO*/
+        if (write(write_fd_gui, &player_pid, sizeof(pid_t)) == -1)
+        {
+            perror("Error writing to private fifo");
+            exit(1);
+        }
+        close(write_fd_gui);
+#endif
         current_player.energy -= THROW_ENERGY_COST;
         current_player.has_ball--;
         int next_id = current_player.id == 5 ? 11 : 5; /* next player is the leader of the other team */
         printf("Leader passing the ball: %d ----> %d\n", current_player.id, next_id);
         // send signal to the leader of other team to receive the ball
         kill(current_player.team_leader_pid, SIGUSR2);
-        // printf("Player %d has thrown the ball to the leader of the other team, and have energy %d\n",
-        //        current_player.id, current_player.energy);
         // after leader throws the ball, ask parent for a new ball.
         kill(getppid(), SIGUSR2);
         // write the team name to the public fifo
