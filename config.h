@@ -34,9 +34,6 @@
 #define MIN_LEADER_ENERGY 150
 #define MAX_LEADER_ENERGY 200
 
-// Time for a round in seconds
-#define ROUND_TIME 60 // 1 minute
-
 // Maximum number of rounds a team can lose before the game ends
 #define MAX_LOST_ROUNDS 4
 
@@ -49,7 +46,13 @@
 // Constants for game settings
 #define NUM_ROUNDS 3
 
-#define GAME_TIME 480 // 8 minutes
+#ifndef ROUND_TIME
+#define ROUND_TIME 60
+#endif
+
+#ifndef GAME_TIME
+#define GAME_TIME 480
+#endif
 
 struct Player
 {

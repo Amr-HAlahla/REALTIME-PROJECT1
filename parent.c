@@ -305,9 +305,18 @@ void end_game_statistics()
     }
     printf("%d Rounds have been played\n", current_round);
     printf("Team A has lost %d rounds and Team B has lost %d rounds\n", num_of_lost_rounds_teamA, num_of_lost_rounds_teamB);
-    char winner_team = num_of_lost_rounds_teamA > num_of_lost_rounds_teamB ? 'B' : 'A';
+
     printf("Final Game Score: Team A %d - %d Team B\n", num_of_lost_rounds_teamB, num_of_lost_rounds_teamA);
-    printf("Team %c has won the game\n", winner_team);
+    if (num_of_lost_rounds_teamA == num_of_lost_rounds_teamB)
+    {
+        printf("The game is a draw\n");
+    }
+    else
+    {
+        char winner_team = num_of_lost_rounds_teamA > num_of_lost_rounds_teamB ? 'B' : 'A';
+        printf("Team %c has won the game\n", winner_team);
+    }
+
     printf("====================================\n");
     printf("====================================\n");
     printf("====================================\n");
@@ -526,6 +535,8 @@ void parent_set_signals()
         perror("Error setting signal handler for SIGALRM");
         exit(1);
     }
+
+    signal(SIGTSTP, SIG_IGN);
 }
 
 void print_player(struct Player player)
