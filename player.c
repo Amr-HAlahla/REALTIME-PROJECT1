@@ -39,27 +39,58 @@ void player_receive_ball()
 {
     if (pause_flag == 0)
     {
-        printf("Player pid %d and id %d has received the ball\n", getpid(), current_player.id);
+        int received_flag = 0;
+        /* The player has 5% chance to fail to collect the ball */
+        double prob = 0.05 * (current_player.energy - MIN_PLAYER_ENERGY) / (double)(MAX_PLAYER_ENERGY - MIN_PLAYER_ENERGY);
+        prob = prob < 0.01 ? 0.01 : (prob > 0.1 ? 0.1 : prob);
+        if (rand() % 100 < prob * 100)
+        {
+            printf("Player %d has failed to collect the ball\n", current_player.id);
+            received_flag = 0;
+            current_player.energy -= PICKUP_ENERGY_COST;
+        }
+        else
+        {
+            printf("Player %d has collected the ball\n", current_player.id);
+            received_flag = 1;
+        }
+        while (!received_flag && pause_flag == 0)
+        {
+            // retry to collect the ball
+            if (rand() % 100 < prob * 100)
+            {
+                printf("Player %d has failed to collect the ball\n", current_player.id);
+                received_flag = 0;
+                current_player.energy -= PICKUP_ENERGY_COST;
+            }
+            else
+            {
+                printf("Player %d has collected the ball\n", current_player.id);
+                received_flag = 1;
+            }
+        }
+
+        // printf("Player %d has received the ball\n", current_player.id);
         current_player.has_ball++;
-        // Generate a sleep time between 0.5 and 2 seconds
+        // Generate a sleep time between 0.2 and 1.5 seconds
         int energy_level = current_player.energy;
         double sleep_time;
 
         if (current_player.id == 5 || current_player.id == 11)
         {
             // This is a leader player
-            sleep_time = 2 - ((energy_level - MIN_LEADER_ENERGY) /
-                              (double)(MAX_LEADER_ENERGY - MIN_LEADER_ENERGY) * 1.5);
+            sleep_time = 1 - ((energy_level - MIN_LEADER_ENERGY) /
+                              (double)(MAX_LEADER_ENERGY - MIN_LEADER_ENERGY) * 0.8);
         }
         else
         {
             // This is a normal player
-            sleep_time = 2 - ((energy_level - MIN_PLAYER_ENERGY) /
-                              (double)(MAX_PLAYER_ENERGY - MIN_PLAYER_ENERGY) * 1.5);
+            sleep_time = 1.5 - ((energy_level - MIN_PLAYER_ENERGY) /
+                                (double)(MAX_PLAYER_ENERGY - MIN_PLAYER_ENERGY) * 1.3);
         }
         sleep_time = fabs(sleep_time); // get the absolute value
         // printf("Sleep time for player %d: %f seconds\n", current_player.id, sleep_time);
-        sleep_time = sleep_time < 0.5 ? 0.5 : (sleep_time > 2 ? 2 : sleep_time);
+        sleep_time = sleep_time < 0.2 ? 0.2 : (sleep_time > 1.5 ? 1.5 : sleep_time);
         if (sleep_time < 0)
         {
             printf("Player %d has negative sleep time\n", current_player.id);
@@ -97,19 +128,23 @@ void player_throw_ball()
     {
         current_player.energy -= THROW_ENERGY_COST;
         current_player.has_ball--;
+        int next_player_id;
+        /* it current is 5, then next is 0, else if its 11 then next is 6, else next is current + 1 */
+        next_player_id = current_player.id == 5 ? 0 : (current_player.id == 11 ? 6 : current_player.id + 1);
+        printf("Ball passing: P%d ----> P%d\n", current_player.id, next_player_id);
         // send signal to the next player to receive the ball
         if (current_player.id == 10 || current_player.id == 4) // last player in the team
         {
             // team leader can recognize that the ball is thrown from the last player
             kill(current_player.next_player_pid, SIGINT);
-            printf("Player %d has thrown the ball to the leader player %d, and have energy %d\n",
-                   current_player.id, current_player.next_player_pid, current_player.energy);
+            // printf("Player %d has thrown the ball to the leader player %d, and have energy %d\n",
+            //        current_player.id, current_player.next_player_pid, current_player.energy);
         }
         else
         {
             kill(current_player.next_player_pid, SIGUSR2);
-            printf("Player %d has thrown the ball to player %d, and have energy %d\n",
-                   current_player.id, current_player.next_player_pid, current_player.energy);
+            // printf("Player %d has thrown the ball to player %d, and have energy %d\n",
+            //        current_player.id, current_player.next_player_pid, current_player.energy);
         }
     }
 }
@@ -120,10 +155,12 @@ void leader_throw_ball()
     {
         current_player.energy -= THROW_ENERGY_COST;
         current_player.has_ball--;
+        int next_id = current_player.id == 5 ? 11 : 5; /* next player is the leader of the other team */
+        printf("Leader passing the ball: %d ----> %d\n", current_player.id, next_id);
         // send signal to the leader of other team to receive the ball
         kill(current_player.team_leader_pid, SIGUSR2);
-        printf("Player %d has thrown the ball to the leader of the other team, and have energy %d\n",
-               current_player.id, current_player.energy);
+        // printf("Player %d has thrown the ball to the leader of the other team, and have energy %d\n",
+        //        current_player.id, current_player.energy);
         // after leader throws the ball, ask parent for a new ball.
         kill(getppid(), SIGUSR2);
         // write the team name to the public fifo
@@ -146,8 +183,39 @@ void leader_receive_ball()
 {
     if (pause_flag == 0)
     {
+        int received_flag = 0;
+        /* The leader player has 2% chance to fail to collect the ball */
+        double prob = 0.02 * (current_player.energy - MIN_LEADER_ENERGY) / (double)(MAX_LEADER_ENERGY - MIN_LEADER_ENERGY);
+        prob = prob < 0.01 ? 0.01 : (prob > 0.05 ? 0.05 : prob);
+        if (rand() % 100 < prob * 100)
+        {
+            printf("Leader Player %d has failed to collect the ball\n", current_player.id);
+            received_flag = 0;
+            current_player.energy -= PICKUP_ENERGY_COST;
+        }
+        else
+        {
+            printf("Leader Player %d has collected the ball\n", current_player.id);
+            received_flag = 1;
+        }
+        while (!received_flag && pause_flag == 0)
+        {
+            // retry to collect the ball
+            if (rand() % 100 < prob * 100)
+            {
+                printf("Leader Player %d has failed to collect the ball\n", current_player.id);
+                received_flag = 0;
+                current_player.energy -= PICKUP_ENERGY_COST;
+            }
+            else
+            {
+                printf("Leader Player %d has collected the ball\n", current_player.id);
+                received_flag = 1;
+            }
+        }
+
         // this the leader, and he should throw the ball the leader of the other team
-        printf("Leader Player %d has received the ball\n", current_player.id);
+        // printf("Leader Player %d has received the ball\n", current_player.id);
         if (current_player.id != 5 && current_player.id != 11)
         {
             printf("Player %d is not the leader of the team\n", current_player.id);
@@ -158,11 +226,11 @@ void leader_receive_ball()
             current_player.has_ball++;
             int energy_level = current_player.energy;
             double sleep_time;
-            sleep_time = 2 - ((energy_level - MIN_LEADER_ENERGY) /
-                              (double)(MAX_LEADER_ENERGY - MIN_LEADER_ENERGY) * 1.5);
+            /* Sleep time between 0.2 and 1.5 seconds */
+            sleep_time = 1 - ((energy_level - MIN_LEADER_ENERGY) /
+                              (double)(MAX_LEADER_ENERGY - MIN_LEADER_ENERGY) * 0.8);
             sleep_time = fabs(sleep_time); // make sure the sleep time is positive
-            // printf("Sleep time for leader player %d: %f seconds\n", current_player.id, sleep_time);
-            sleep_time = sleep_time < 0.5 ? 0.5 : (sleep_time > 2 ? 2 : sleep_time);
+            sleep_time = sleep_time < 0.2 ? 0.2 : (sleep_time > 1 ? 1 : sleep_time);
             if (sleep_time < 0)
             {
                 printf("Player %d has negative sleep time\n", current_player.id);
@@ -206,12 +274,26 @@ void handle_low_energy()
     {
         int energy_level = current_player.energy;
         printf("Player %d is recharging energy\n", current_player.id);
-        double sleep_time = (rand() % 8 + 2) / 10.0; // generate a random sleep time between 0.2 and 1 seconds
+        /* sleep time in range between 0.1 and 0.7 seconds */
+        double sleep_time = (rand() % 7 + 1) / 10.0;
         usleep((unsigned int)(sleep_time * 1000000));
+
         // recharge energy by a random value between THROW_ENERGY_COST/2 and 2*THROW_ENERGY_COST
-        int range = 3 * THROW_ENERGY_COST / 2;
-        int lower_bound = THROW_ENERGY_COST / 2;
+        int range, lower_bound;
+        if (current_player.id == 5 || current_player.id == 11)
+        {
+            // This is a leader player
+            range = 2 * THROW_ENERGY_COST;
+            lower_bound = THROW_ENERGY_COST;
+        }
+        else
+        {
+            // This is a normal player
+            range = 3 * THROW_ENERGY_COST / 2;
+            lower_bound = THROW_ENERGY_COST / 2;
+        }
         current_player.energy += (rand() % range) + lower_bound;
+
         if (current_player.energy >= THROW_ENERGY_COST) // if the energy is enough now to throw the ball
         {
             energy_flag = 0; // exit the loop (No problems with energy level)

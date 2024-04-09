@@ -4,7 +4,7 @@ typedef void (*sighandler_t)(int);
 
 sighandler_t sigset(int sig, sighandler_t disp);
 
-extern int num_of_balls = 0;
+int num_of_balls = 0;
 int current_round = 0;
 int num_of_lost_rounds_teamA = 0;
 int num_of_lost_rounds_teamB = 0;

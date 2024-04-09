@@ -35,13 +35,13 @@
 #define MAX_LEADER_ENERGY 200
 
 // Time for a round in seconds
-#define ROUND_TIME 50 // 1 minute
+#define ROUND_TIME 60 // 1 minute
 
 // Maximum number of rounds a team can lose before the game ends
-#define MAX_LOST_ROUNDS 3
+#define MAX_LOST_ROUNDS 4
 
 // Energy cost for throwing a ball
-#define THROW_ENERGY_COST 15
+#define THROW_ENERGY_COST 12
 
 // Energy cost for picking up a dropped ball
 #define PICKUP_ENERGY_COST 5 // (1 / energy) ratio will be used as a probability of failuer to receive the ball.
