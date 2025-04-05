@@ -54,8 +54,8 @@ This project simulates a ball passing game between two teams, where players must
 
 1. Clone the repository:
 ```bash
-git clone [repository-url]
-cd [repository-name]
+git clone https://github.com/Amr-HAlahla/REALTIME-PROJECT1
+cd REALTIME-PROJECT1
 ```
 
 2. Build the project:
